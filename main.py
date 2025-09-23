@@ -1,42 +1,54 @@
 import os
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from database import SessionLocal, engine, Base
 from models import Cliente, Jefe, Barbero, Servicio, Producto, Disponibilidad, Reserva, Notificacion
+from pydantic import BaseModel
 
 # Crear tablas en la BD
+
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
 
+# Configuración CORS
+
 origins = [
-    "https://web-production-23c06.up.railway.app" # frontend deploy
+    "https://web-production-23c06.up.railway.app"  # frontend deploy
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,    # URLs permitidas
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],      # GET, POST, PUT, DELETE, etc.
-    allow_headers=["*"],      # cualquier header
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
-# Endpoint de login
-@app.post("/login/")
-def login_jefe(credentials: dict = Body(...)):
-    username = credentials.get("username")
-    password = credentials.get("password")
 
+
+# Modelo Pydantic para login
+
+class LoginData(BaseModel):
+    username: str
+    password: str
+
+
+# Endpoint de login
+
+@app.post("/login/")
+def login_jefe(credentials: LoginData):
     db: Session = SessionLocal()
-    jefe = db.query(Jefe).filter(Jefe.usuario == username).first()
+    jefe = db.query(Jefe).filter(Jefe.usuario == credentials.username).first()
     db.close()
 
-    if jefe and jefe.contraseña == password:
+    if jefe and jefe.contraseña == credentials.password:
         return {"mensaje": "Login exitoso", "id_jefe": jefe.id_jefe}
     else:
         raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos")
-# Listar todos los clientes
+
+# Endpoints de clientes, barberos, servicios y productos
 @app.get("/clientes/")
 def listar_clientes():
     db: Session = SessionLocal()
@@ -44,7 +56,6 @@ def listar_clientes():
     db.close()
     return clientes
 
-#  Listar barberos
 @app.get("/barberos/")
 def listar_barberos():
     db: Session = SessionLocal()
@@ -52,7 +63,6 @@ def listar_barberos():
     db.close()
     return barberos
 
-#  Listar servicios
 @app.get("/servicios/")
 def listar_servicios():
     db: Session = SessionLocal()
@@ -60,7 +70,6 @@ def listar_servicios():
     db.close()
     return servicios
 
-# Listar productos
 @app.get("/productos/")
 def listar_productos():
     db: Session = SessionLocal()
@@ -68,7 +77,8 @@ def listar_productos():
     db.close()
     return productos
 
-# Disponibilidad libre
+# Disponibilidad y reservas
+
 @app.get("/disponibilidad/libre/")
 def disponibilidad_libre():
     db: Session = SessionLocal()
@@ -76,7 +86,6 @@ def disponibilidad_libre():
     db.close()
     return bloques
 
-# Reservas pendientes
 @app.get("/reservas/pendientes/")
 def reservas_pendientes():
     db: Session = SessionLocal()
@@ -84,7 +93,6 @@ def reservas_pendientes():
     db.close()
     return reservas
 
-#  Bloquear horario de barbero
 @app.put("/disponibilidad/bloquear/{id_disponibilidad}")
 def bloquear_disponibilidad(id_disponibilidad: int):
     db: Session = SessionLocal()
@@ -95,7 +103,6 @@ def bloquear_disponibilidad(id_disponibilidad: int):
     db.close()
     return {"mensaje": "Bloqueo realizado"}
 
-#  Confirmar reserva
 @app.put("/reservas/confirmar/{id_reserva}")
 def confirmar_reserva(id_reserva: int):
     db: Session = SessionLocal()
@@ -106,7 +113,6 @@ def confirmar_reserva(id_reserva: int):
     db.close()
     return {"mensaje": "Reserva confirmada"}
 
-# Cancelar reserva
 @app.delete("/reservas/cancelar/{id_reserva}")
 def cancelar_reserva(id_reserva: int):
     db: Session = SessionLocal()
@@ -117,7 +123,6 @@ def cancelar_reserva(id_reserva: int):
     db.close()
     return {"mensaje": "Reserva cancelada"}
 
-# Reservas con detalle completo
 @app.get("/reservas/detalle/")
 def reservas_detalle():
     db: Session = SessionLocal()
@@ -134,6 +139,8 @@ def reservas_detalle():
     db.close()
     return reservas
 
+
+# Ejecutar Uvicorn
 if __name__ == "__main__":
     import uvicorn
     PORT = int(os.environ.get("PORT", 8000))
