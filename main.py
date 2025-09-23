@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Body
 from sqlalchemy.orm import Session
 from database import SessionLocal, engine, Base
 from models import Cliente, Jefe, Barbero, Servicio, Producto, Disponibilidad, Reserva, Notificacion
@@ -9,6 +9,17 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
+# Endpoint de login
+@app.post("/login/")
+def login_jefe(username: str = Body(...), password: str = Body(...)):
+    db: Session = SessionLocal()
+    jefe = db.query(Jefe).filter(Jefe.usuario == username).first()
+    db.close()
+    
+    if jefe and jefe.contraseña == password:
+        return {"mensaje": "Login exitoso", "id_jefe": jefe.id_jefe}
+    else:
+        raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos")
 # Listar todos los clientes
 @app.get("/clientes/")
 def listar_clientes():
