@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-import app.models as models, app.schemas as schemas
+import models as models, schemas as schemas
 
 def get_clientes(db: Session):
     return db.query(models.Cliente).all()
