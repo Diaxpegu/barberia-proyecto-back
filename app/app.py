@@ -1,5 +1,5 @@
 from flask import Flask, render_template, url_for
-from models import get_peluqueros
+from app.models import get_peluqueros
 
 app = Flask(__name__)
 

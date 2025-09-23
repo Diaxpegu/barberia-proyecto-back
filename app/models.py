@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Numeric, Enum, Date, Time, DateTime, ForeignKey,SmallInteger
-from database import Base
+from app.database import Base
 
 class Cliente(Base):
     __tablename__ = "clientes"
