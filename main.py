@@ -7,14 +7,11 @@ from models import Cliente, Jefe, Barbero, Servicio, Producto, Disponibilidad, R
 from pydantic import BaseModel
 
 # Crear tablas en la BD
-
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-
 # Configuración CORS
-
 origins = [
     "https://web-production-23c06.up.railway.app"  # frontend deploy
 ]
@@ -27,16 +24,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 # Modelo Pydantic para login
-
 class LoginData(BaseModel):
     username: str
     password: str
 
-
 # Endpoint de login
-
 @app.post("/login/")
 @app.post("/login")
 def login_jefe(credentials: LoginData):
@@ -79,7 +72,6 @@ def listar_productos():
     return productos
 
 # Disponibilidad y reservas
-
 @app.get("/disponibilidad/libre/")
 def disponibilidad_libre():
     db: Session = SessionLocal()
@@ -138,8 +130,19 @@ def reservas_detalle():
     ).join(Barbero, Reserva.id_barbero == Barbero.id_barbero
     ).join(Servicio, Reserva.id_servicio == Servicio.id_servicio).all()
     db.close()
-    return reservas
 
+    # Convertir a lista de diccionarios para JSON
+    resultado = [
+        {
+            "id_reserva": r[0],
+            "cliente": r[1],
+            "barbero": r[2],
+            "nombre_servicio": r[3],
+            "fecha": str(r[4]),
+            "hora": str(r[5]),
+        } for r in reservas
+    ]
+    return resultado
 
 # Ejecutar Uvicorn
 if __name__ == "__main__":
