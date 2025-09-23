@@ -1,28 +1,49 @@
 import os
-from fastapi import FastAPI
-from pydantic import BaseModel
+from typing import List
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from database import SessionLocal, engine, Base
-from models import Cliente
+import schemas, crud
 
-# Crear tablas bd
+# crea tablas si no existen (en prod usar migraciones como alembic)
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI()
+app = FastAPI(title="API Clientes")
 
-class ClienteSchema(BaseModel):
-    nombre: str
-    correo: str
+# CORS configurable por variable de entorno (separa orígenes con coma)
+origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-@app.post("/clientes/")
-def crear_cliente(cliente: ClienteSchema):
-    db: Session = SessionLocal()
-    nuevo = Cliente(nombre=cliente.nombre, correo=cliente.correo)
-    db.add(nuevo)
-    db.commit()
-    db.refresh(nuevo)
-    db.close()
-    return {"id": nuevo.id, "nombre": nuevo.nombre, "correo": nuevo.correo}
+# dependencia DB
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+@app.get("/clientes", response_model=List[schemas.ClienteOut])
+def listar_clientes(db: Session = Depends(get_db)):
+    return crud.get_clientes(db)
+
+@app.get("/clientes/{cliente_id}", response_model=schemas.ClienteOut)
+def obtener_cliente(cliente_id: int, db: Session = Depends(get_db)):
+    cliente = crud.get_cliente(db, cliente_id)
+    if not cliente:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    return cliente
+
+@app.post("/clientes", response_model=schemas.ClienteOut, status_code=201)
+def crear_cliente(cliente: schemas.ClienteCreate, db: Session = Depends(get_db)):
+    return crud.create_cliente(db, cliente)
+
 
 # Conexion para railway
 if __name__ == "__main__":
