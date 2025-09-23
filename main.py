@@ -38,6 +38,7 @@ class LoginData(BaseModel):
 # Endpoint de login
 
 @app.post("/login/")
+@app.post("/login")
 def login_jefe(credentials: LoginData):
     db: Session = SessionLocal()
     jefe = db.query(Jefe).filter(Jefe.usuario == credentials.username).first()
