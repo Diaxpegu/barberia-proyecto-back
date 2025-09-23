@@ -1,5 +1,6 @@
 import os
 from fastapi import FastAPI, HTTPException, Body
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from database import SessionLocal, engine, Base
 from models import Cliente, Jefe, Barbero, Servicio, Producto, Disponibilidad, Reserva, Notificacion
@@ -9,13 +10,28 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
+
+origins = [
+    "https://web-production-23c06.up.railway.app" # frontend deploy
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,    # URLs permitidas
+    allow_credentials=True,
+    allow_methods=["*"],      # GET, POST, PUT, DELETE, etc.
+    allow_headers=["*"],      # cualquier header
+)
 # Endpoint de login
 @app.post("/login/")
-def login_jefe(username: str = Body(...), password: str = Body(...)):
+def login_jefe(credentials: dict = Body(...)):
+    username = credentials.get("username")
+    password = credentials.get("password")
+
     db: Session = SessionLocal()
     jefe = db.query(Jefe).filter(Jefe.usuario == username).first()
     db.close()
-    
+
     if jefe and jefe.contraseña == password:
         return {"mensaje": "Login exitoso", "id_jefe": jefe.id_jefe}
     else:
