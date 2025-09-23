@@ -3,15 +3,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-<<<<<<< HEAD
-DB_USER = os.environ.get("DB_USER")
-DB_PASS = os.environ.get("DB_PASS")
-DB_HOST = os.environ.get("DB_HOST")
-DB_PORT = os.environ.get("DB_PORT", "3306")
-DB_NAME = os.environ.get("DB_NAME")
-
-SQLALCHEMY_DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-=======
 DB_USER = os.environ.get("MYSQLUSER")
 DB_PASS = os.environ.get("MYSQLPASSWORD")
 DB_HOST = os.environ.get("MYSQLHOST")
@@ -20,7 +11,6 @@ DB_PORT = os.environ.get("MYSQLPORT", "3306")
 
 SQLALCHEMY_DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
->>>>>>> f6990b1 (Modificar main.py y models.py con tablas según el diccionario de datos)
 
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

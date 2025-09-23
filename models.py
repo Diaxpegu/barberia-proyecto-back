@@ -1,12 +1,6 @@
-<<<<<<< HEAD
-from sqlalchemy import Column, Integer, String, ForeignKey
-from sqlalchemy.orm import relationship
-=======
 from sqlalchemy import Column, Integer, String, Numeric, Enum, Date, Time, DateTime, ForeignKey
->>>>>>> f6990b1 (Modificar main.py y models.py con tablas según el diccionario de datos)
 from database import Base
 
-# Tabla de clientes
 class Cliente(Base):
     __tablename__ = "clientes"
     id_cliente = Column(Integer, primary_key=True, index=True)
@@ -14,37 +8,6 @@ class Cliente(Base):
     correo = Column(String(255), nullable=False)
     telefono = Column(String(15), nullable=False)
 
-<<<<<<< HEAD
-    id = Column(Integer, primary_key=True, index=True)
-    nombre = Column(String(100), nullable=False)
-    correo = Column(String(50), nullable=False, unique=True)
-    telefono = Column(String(15), nullable=False)
-    
-    # Relación con Barbero (opcional: cliente puede tener un barbero asignado)
-    barbero_id = Column(Integer, ForeignKey("barberos.id"), nullable=True)
-    barbero = relationship("Barbero", back_populates="clientes")
-
-# Tabla de jefes
-class Jefe(Base):
-    __tablename__ = "jefes"
-
-    id = Column(Integer, primary_key=True, index=True)
-    nombre = Column(String(100), nullable=False)
-    usuario = Column(String(20), nullable=False, unique=True)
-    contrasena = Column(String(255), nullable=False)
-    rol = Column(String(50), nullable=True)
-
-# Tabla de barberos
-class Barbero(Base):
-    __tablename__ = "barberos"
-
-    id = Column(Integer, primary_key=True, index=True)
-    nombre = Column(String(100), nullable=False)
-    
-    # Relación con clientes
-    clientes = relationship("Cliente", back_populates="barbero")
-
-=======
 class Jefe(Base):
     __tablename__ = "jefes"
     id_jefe = Column(Integer, primary_key=True, index=True)
@@ -104,4 +67,3 @@ class Notificacion(Base):
     fecha_envio = Column(DateTime, nullable=False)
     tipo = Column(Enum('confirmado','recordatorio','cancelado', name='tipo_notificacion'), nullable=False)
     id_reserva = Column(Integer, ForeignKey("reservas.id_reserva"), nullable=False)
->>>>>>> f6990b1 (Modificar main.py y models.py con tablas según el diccionario de datos)

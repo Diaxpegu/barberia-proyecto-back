@@ -1,60 +1,14 @@
 import os
-<<<<<<< HEAD
-from typing import List
-from fastapi import FastAPI, Depends, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
-from database import SessionLocal, engine, Base
-import schemas, crud
-
-# crea tablas si no existen (en prod usar migraciones como alembic)
-=======
 from fastapi import FastAPI
 from sqlalchemy.orm import Session
 from database import SessionLocal, engine, Base
 from models import Cliente, Jefe, Barbero, Servicio, Producto, Disponibilidad, Reserva, Notificacion
 
 # Crear tablas en la BD
->>>>>>> f6990b1 (Modificar main.py y models.py con tablas según el diccionario de datos)
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="API Clientes")
+app = FastAPI()
 
-<<<<<<< HEAD
-# CORS configurable por variable de entorno (separa orígenes con coma)
-origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# dependencia DB
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-@app.get("/clientes", response_model=List[schemas.ClienteOut])
-def listar_clientes(db: Session = Depends(get_db)):
-    return crud.get_clientes(db)
-
-@app.get("/clientes/{cliente_id}", response_model=schemas.ClienteOut)
-def obtener_cliente(cliente_id: int, db: Session = Depends(get_db)):
-    cliente = crud.get_cliente(db, cliente_id)
-    if not cliente:
-        raise HTTPException(status_code=404, detail="Cliente no encontrado")
-    return cliente
-
-@app.post("/clientes", response_model=schemas.ClienteOut, status_code=201)
-def crear_cliente(cliente: schemas.ClienteCreate, db: Session = Depends(get_db)):
-    return crud.create_cliente(db, cliente)
-
-=======
 # Listar todos los clientes
 @app.get("/clientes/")
 def listar_clientes():
@@ -152,7 +106,6 @@ def reservas_detalle():
     ).join(Servicio, Reserva.id_servicio == Servicio.id_servicio).all()
     db.close()
     return reservas
->>>>>>> f6990b1 (Modificar main.py y models.py con tablas según el diccionario de datos)
 
 if __name__ == "__main__":
     import uvicorn
