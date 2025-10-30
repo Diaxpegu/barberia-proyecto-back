@@ -1,17 +1,39 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
+from typing import Optional
 
-#Base común para Cliente (entrada y salida)
-class ClienteBase(BaseModel):
+class ClienteSchema(BaseModel):
     nombre: str
-    correo: EmailStr  # valida automáticamente que sea un email válido
+    correo: str
+    telefono: str
+    direccion: Optional[str] = None
 
+class BarberoSchema(BaseModel):
+    nombre: str
+    especialidad: Optional[str] = None
 
-class ClienteCreate(ClienteBase):
-    pass  # hereda nombre y correo de ClienteBase
+class ServicioSchema(BaseModel):
+    nombre_servicio: str
+    precio: float
+    duracion: int
+    id_jefe: Optional[str] = None
 
+class ProductoSchema(BaseModel):
+    nombre_producto: str
+    precio: float
+    stock: int
+    id_jefe: Optional[str] = None
 
-class ClienteOut(ClienteBase):
-    id: int  # agregamos id para que se vea en la respuesta
+class DisponibilidadSchema(BaseModel):
+    fecha: str
+    hora_inicio: str
+    hora_fin: str
+    estado: str
+    id_barbero: Optional[str] = None
 
-    class Config:
-        orm_mode = True  # permite convertir objetos SQLAlchemy a JSON
+class ReservaSchema(BaseModel):
+    id_cliente: str
+    id_barbero: str
+    id_servicio: str
+    fecha: str
+    hora: str
+    estado: str

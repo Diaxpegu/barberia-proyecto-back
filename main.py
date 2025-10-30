@@ -1,21 +1,18 @@
-import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
-from database import SessionLocal, engine, Base
-from models import Cliente, Jefe, Barbero, Servicio, Producto, Disponibilidad, Reserva, Notificacion
-from pydantic import BaseModel
-
-# Crear tablas en la BD
-Base.metadata.create_all(bind=engine)
+from bson import ObjectId
+from database import (
+    clientes_col, barberos_col, servicios_col, productos_col,
+    reservas_col, disponibilidades_col
+)
+from models import Cliente, Barbero, Servicio, Producto, Disponibilidad, Reserva
+from crud import to_json
+import os
 
 app = FastAPI()
 
-# Configuración CORS
-origins = [
-    "https://web-production-23c06.up.railway.app"  # frontend deploy
-]
-
+# --- CORS ---
+origins = ["https://web-production-23c06.up.railway.app"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -24,127 +21,81 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Modelo Pydantic para login
-class LoginData(BaseModel):
-    username: str
-    password: str
-
-# Endpoint de login
-@app.post("/login/")
-@app.post("/login")
-def login_jefe(credentials: LoginData):
-    db: Session = SessionLocal()
-    jefe = db.query(Jefe).filter(Jefe.usuario == credentials.username).first()
-    db.close()
-
-    if jefe and jefe.contraseña == credentials.password:
-        return {"mensaje": "Login exitoso", "id_jefe": jefe.id_jefe}
-    else:
-        raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos")
-
-# Endpoints de clientes, barberos, servicios y productos
+# --- CLIENTES ---
 @app.get("/clientes/")
 def listar_clientes():
-    db: Session = SessionLocal()
-    clientes = db.query(Cliente).all()
-    db.close()
-    return clientes
+    return [to_json(c) for c in clientes_col.find()]
 
+@app.post("/clientes/")
+def crear_cliente(cliente: Cliente):
+    res = clientes_col.insert_one(cliente.dict())
+    return {"mensaje": "Cliente agregado", "id": str(res.inserted_id)}
+
+# --- BARBEROS ---
 @app.get("/barberos/")
 def listar_barberos():
-    db: Session = SessionLocal()
-    barberos = db.query(Barbero).all()
-    db.close()
-    return barberos
+    return [to_json(b) for b in barberos_col.find()]
 
+# --- SERVICIOS ---
 @app.get("/servicios/")
 def listar_servicios():
-    db: Session = SessionLocal()
-    servicios = db.query(Servicio).all()
-    db.close()
-    return servicios
+    return [to_json(s) for s in servicios_col.find()]
 
+# --- PRODUCTOS ---
 @app.get("/productos/")
 def listar_productos():
-    db: Session = SessionLocal()
-    productos = db.query(Producto).all()
-    db.close()
-    return productos
+    return [to_json(p) for p in productos_col.find()]
 
-# Disponibilidad y reservas
+# --- DISPONIBILIDAD ---
 @app.get("/disponibilidad/libre/")
 def disponibilidad_libre():
-    db: Session = SessionLocal()
-    bloques = db.query(Disponibilidad).filter(Disponibilidad.estado=="disponible").all()
-    db.close()
-    return bloques
-
-@app.get("/reservas/pendientes/")
-def reservas_pendientes():
-    db: Session = SessionLocal()
-    reservas = db.query(Reserva).filter(Reserva.estado=="pendiente").all()
-    db.close()
-    return reservas
+    return [to_json(d) for d in disponibilidades_col.find({"estado": "disponible"})]
 
 @app.put("/disponibilidad/bloquear/{id_disponibilidad}")
-def bloquear_disponibilidad(id_disponibilidad: int):
-    db: Session = SessionLocal()
-    bloque = db.query(Disponibilidad).get(id_disponibilidad)
-    if bloque:
-        bloque.estado = "bloqueado"
-        db.commit()
-    db.close()
+def bloquear_disponibilidad(id_disponibilidad: str):
+    result = disponibilidades_col.update_one(
+        {"_id": ObjectId(id_disponibilidad)},
+        {"$set": {"estado": "bloqueado"}}
+    )
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="No encontrada")
     return {"mensaje": "Bloqueo realizado"}
 
+# --- RESERVAS ---
+@app.get("/reservas/pendientes/")
+def reservas_pendientes():
+    return [to_json(r) for r in reservas_col.find({"estado": "pendiente"})]
+
 @app.put("/reservas/confirmar/{id_reserva}")
-def confirmar_reserva(id_reserva: int):
-    db: Session = SessionLocal()
-    reserva = db.query(Reserva).get(id_reserva)
-    if reserva:
-        reserva.estado = "confirmado"
-        db.commit()
-    db.close()
+def confirmar_reserva(id_reserva: str):
+    result = reservas_col.update_one(
+        {"_id": ObjectId(id_reserva)},
+        {"$set": {"estado": "confirmado"}}
+    )
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="No encontrada")
     return {"mensaje": "Reserva confirmada"}
 
 @app.delete("/reservas/cancelar/{id_reserva}")
-def cancelar_reserva(id_reserva: int):
-    db: Session = SessionLocal()
-    reserva = db.query(Reserva).get(id_reserva)
-    if reserva:
-        db.delete(reserva)
-        db.commit()
-    db.close()
+def cancelar_reserva(id_reserva: str):
+    result = reservas_col.delete_one({"_id": ObjectId(id_reserva)})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="No encontrada")
     return {"mensaje": "Reserva cancelada"}
 
 @app.get("/reservas/detalle/")
 def reservas_detalle():
-    db: Session = SessionLocal()
-    reservas = db.query(
-        Reserva.id_reserva,
-        Cliente.nombre.label("cliente"),
-        Barbero.nombre.label("barbero"),
-        Servicio.nombre_servicio,
-        Reserva.fecha,
-        Reserva.hora
-    ).join(Cliente, Reserva.id_cliente == Cliente.id_cliente
-    ).join(Barbero, Reserva.id_barbero == Barbero.id_barbero
-    ).join(Servicio, Reserva.id_servicio == Servicio.id_servicio).all()
-    db.close()
+    reservas = list(reservas_col.aggregate([
+        {"$lookup": {"from": "clientes", "localField": "id_cliente", "foreignField": "_id", "as": "cliente"}},
+        {"$lookup": {"from": "barberos", "localField": "id_barbero", "foreignField": "_id", "as": "barbero"}},
+        {"$lookup": {"from": "servicios", "localField": "id_servicio", "foreignField": "_id", "as": "servicio"}}
+    ]))
+    return [to_json(r) for r in reservas]
 
-    # Convertir a lista de diccionarios para JSON
-    resultado = [
-        {
-            "id_reserva": r[0],
-            "cliente": r[1],
-            "barbero": r[2],
-            "nombre_servicio": r[3],
-            "fecha": str(r[4]),
-            "hora": str(r[5]),
-        } for r in reservas
-    ]
-    return resultado
+@app.get("/")
+def root():
+    return {"mensaje": "API conectada correctamente a MongoDB"}
 
-# Ejecutar Uvicorn
 if __name__ == "__main__":
     import uvicorn
     PORT = int(os.environ.get("PORT", 8000))

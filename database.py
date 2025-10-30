@@ -1,16 +1,19 @@
+from pymongo import MongoClient
 import os
-from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
 
-DB_USER = os.environ.get("DB_USER", "root")
-DB_PASS = os.environ.get("DB_PASS", "")
-DB_HOST = os.environ.get("DB_HOST", "mysql.railway.internal")
-DB_NAME = os.environ.get("DB_NAME", "railway")
-DB_PORT = os.environ.get("DB_PORT", 3306)
+# Railway proporciona MONGO_URL automáticamente
+MONGO_URL = os.getenv("MONGO_URL")
 
-SQLALCHEMY_DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+# Conectar cliente
+client = MongoClient(MONGO_URL)
+db = client["barberia"]  # nombre de la BD en MongoDB
 
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+# Colecciones existentes
+clientes_col = db["clientes"]
+barberos_col = db["barberos"]
+servicios_col = db["servicios"]
+productos_col = db["productos"]
+reservas_col = db["reservas"]
+disponibilidades_col = db["disponibilidades"]
+notificaciones_col = db["notificaciones"]
+jefes_col = db["jefes"]
