@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from bson import ObjectId
+from bson import ObjectId, errors
 from database import (
     clientes_col, barberos_col, servicios_col, productos_col,
     reservas_col, disponibilidades_col
@@ -53,8 +53,13 @@ def disponibilidad_libre():
 
 @app.put("/disponibilidad/bloquear/{id_disponibilidad}")
 def bloquear_disponibilidad(id_disponibilidad: str):
+    try:
+        oid = ObjectId(id_disponibilidad)
+    except errors.InvalidId:
+        raise HTTPException(status_code=400, detail="ID de disponibilidad inválido")
+
     result = disponibilidades_col.update_one(
-        {"_id": ObjectId(id_disponibilidad)},
+        {"_id": oid},
         {"$set": {"estado": "bloqueado"}}
     )
     if result.modified_count == 0:
@@ -68,8 +73,13 @@ def reservas_pendientes():
 
 @app.put("/reservas/confirmar/{id_reserva}")
 def confirmar_reserva(id_reserva: str):
+    try:
+        oid = ObjectId(id_reserva)
+    except errors.InvalidId:
+        raise HTTPException(status_code=400, detail="ID de reserva inválido")
+
     result = reservas_col.update_one(
-        {"_id": ObjectId(id_reserva)},
+        {"_id": oid},
         {"$set": {"estado": "confirmado"}}
     )
     if result.modified_count == 0:
@@ -78,7 +88,12 @@ def confirmar_reserva(id_reserva: str):
 
 @app.delete("/reservas/cancelar/{id_reserva}")
 def cancelar_reserva(id_reserva: str):
-    result = reservas_col.delete_one({"_id": ObjectId(id_reserva)})
+    try:
+        oid = ObjectId(id_reserva)
+    except errors.InvalidId:
+        raise HTTPException(status_code=400, detail="ID de reserva inválido")
+
+    result = reservas_col.delete_one({"_id": oid})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="No encontrada")
     return {"mensaje": "Reserva cancelada"}
