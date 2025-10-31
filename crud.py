@@ -1,11 +1,12 @@
 from bson import ObjectId
 
 def to_json(document):
-    """
-    Convierte un documento MongoDB a un JSON compatible con FastAPI.
-    """
     if not document:
-        return None
-    if "_id" in document:
-        document["_id"] = str(document["_id"])
-    return document
+        return {}
+    result = {}
+    for key, value in document.items():
+        if isinstance(value, ObjectId):
+            result[key] = str(value)  # convertir ObjectId en string
+        else:
+            result[key] = value
+    return result
