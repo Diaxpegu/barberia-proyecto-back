@@ -5,14 +5,13 @@ from database import (
     clientes_col, barberos_col, servicios_col, productos_col,
     reservas_col, disponibilidades_col
 )
-from models import Cliente, Barbero, Servicio, Producto, Disponibilidad, Reserva
 from crud import to_json
 import os
 
 app = FastAPI()
 
-# --- CORS ---
-origins = ["https://web-production-23c06.up.railway.app"]
+# --- Configuración CORS ---
+origins = ["https://web-production-23c06.up.railway.app"]  # dominio del frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -24,11 +23,12 @@ app.add_middleware(
 # --- CLIENTES ---
 @app.get("/clientes/")
 def listar_clientes():
-    return [to_json(c) for c in clientes_col.find()]
+    clientes = list(clientes_col.find({}, {"_id": 0}))  # no mostramos _id
+    return clientes
 
 @app.post("/clientes/")
-def crear_cliente(cliente: Cliente):
-    res = clientes_col.insert_one(cliente.dict())
+def crear_cliente(cliente: dict):
+    res = clientes_col.insert_one(cliente)
     return {"mensaje": "Cliente agregado", "id": str(res.inserted_id)}
 
 # --- BARBEROS ---
@@ -92,9 +92,10 @@ def reservas_detalle():
     ]))
     return [to_json(r) for r in reservas]
 
+# --- Root ---
 @app.get("/")
 def root():
-    return {"mensaje": "API conectada correctamente a MongoDB"}
+    return {"mensaje": "API conectada correctamente a MongoDB (BD test)"}
 
 if __name__ == "__main__":
     import uvicorn

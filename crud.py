@@ -1,8 +1,11 @@
 from bson import ObjectId
 
-def to_json(doc):
-    """Convierte documentos Mongo en JSON serializable"""
-    if not doc:
+def to_json(document):
+    """
+    Convierte un documento MongoDB a un JSON compatible con FastAPI.
+    """
+    if not document:
         return None
-    doc["_id"] = str(doc["_id"])
-    return doc
+    if "_id" in document:
+        document["_id"] = str(document["_id"])
+    return document

@@ -1,12 +1,14 @@
 from pymongo import MongoClient
 import os
 
-# Railway proporciona MONGO_URL automáticamente
+# URL de conexión que Railway proporciona como variable MONGO_URL
 MONGO_URL = os.getenv("MONGO_URL")
 
 # Conectar cliente
 client = MongoClient(MONGO_URL)
-db = client["test"]  # nombre de la BD en MongoDB
+
+# Nombre de la base de datos (en tu caso es "test")
+db = client["test"]
 
 # Colecciones existentes
 clientes_col = db["clientes"]
