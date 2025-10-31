@@ -9,8 +9,7 @@ MONGO_PORT = os.getenv("MONGOPORT", "27017")
 MONGO_DB = "test"  # Nombre de tu base de datos
 
 # Construir URL de conexión (si no se define directamente en Railway)
-MONGO_URL = os.getenv("MONGO_URL") or f"mongodb://{MONGO_USER}:{MONGO_PASS}@{MONGO_HOST}:{MONGO_PORT}/{MONGO_DB}"
-
+MONGO_URL = os.getenv("MONGO_URL") or f"mongodb://{MONGO_USER}:{MONGO_PASS}@{MONGO_HOST}:{MONGO_PORT}/{MONGO_DB}?authSource=admin"
 # Crear cliente y conectar base de datos
 client = MongoClient(MONGO_URL)
 db = client[MONGO_DB]
