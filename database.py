@@ -6,7 +6,7 @@ MONGO_URL = os.getenv("MONGO_URL")
 
 # Conectar cliente
 client = MongoClient(MONGO_URL)
-db = client["barberia"]  # nombre de la BD en MongoDB
+db = client["test"]  # nombre de la BD en MongoDB
 
 # Colecciones existentes
 clientes_col = db["clientes"]
