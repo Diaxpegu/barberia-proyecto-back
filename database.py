@@ -9,15 +9,14 @@ MONGO_URI = os.getenv(
     "mongodb://mongo:password@mongodb.railway.internal:27017/test?authSource=admin"
     
 )
-MONGO_URL = os.getenv("MONGO_URL")
-MONGO_DB = os.getenv("MONGO_DB", "Barberia")  # Nombre de la base de datos
+MONGO_DB = os.getenv("MONGO_DB", "barberia")  # Nombre de la base de datos
 
 # -----------------------
 # Cliente MongoDB
 # -----------------------
 try:
-    client = MongoClient(MONGO_URL)
-    db = client[MONGO_URL]
+    client = MongoClient(MONGO_URI)
+    db = client[MONGO_DB]
     print("Conexión a MongoDB exitosa")
 except Exception as e:
     print("Error al conectar a MongoDB:", e)
@@ -34,6 +33,7 @@ reservas_col = db["reservas"]
 disponibilidades_col = db["disponibilidades"]
 notificaciones_col = db["notificaciones"]
 jefes_col = db["jefes"]
+
 
 """from pymongo import MongoClient
 import os
