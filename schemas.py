@@ -1,11 +1,11 @@
 # schemas.py
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from typing import Optional
 from datetime import date
 
 class ClienteSchema(BaseModel):
     nombre: str
-    correo: str
+    correo: EmailStr
     telefono: str
     direccion: Optional[str] = None
 
