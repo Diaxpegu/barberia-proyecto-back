@@ -7,7 +7,9 @@ import os
 MONGO_URI = os.getenv(
     "MONGO_URI",
     "mongodb://mongo:password@mongodb.railway.internal:27017/test?authSource=admin"
+    
 )
+MONGO_URL = os.getenv("MONGO_URL", "mongodb+srv://ignacio_user:1234@cluster0.abcde.mongodb.net/?retryWrites=true&w=majority")
 MONGO_DB = os.getenv("MONGO_DB", "barberia")  # Nombre de la base de datos
 
 # -----------------------
