@@ -9,7 +9,7 @@ MONGO_URL = os.getenv(
     "mongodb://mongo:password@mongodb.railway.internal:27017/test?authSource=admin"
     
 )
-MONGO_DB = os.getenv("MONGO_DB", "barberia")  # Nombre de la base de datos
+MONGO_DB = os.getenv("MONGO_DB", "test")  # Nombre de la base de datos
 
 # -----------------------
 # Cliente MongoDB
