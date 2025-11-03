@@ -10,7 +10,7 @@ MONGO_URI = os.getenv(
     
 )
 MONGO_URL = os.getenv("MONGO_URL")
-MONGO_DB = os.getenv("MONGO_DB", "barberia")  # Nombre de la base de datos
+MONGO_DB = os.getenv("MONGO_DB", "Barberia")  # Nombre de la base de datos
 
 # -----------------------
 # Cliente MongoDB
