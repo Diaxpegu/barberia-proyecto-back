@@ -1,9 +1,11 @@
-from pydantic import BaseModel
+# schemas.py
+from pydantic import BaseModel, EmailStr
 from typing import Optional
+from datetime import date
 
 class ClienteSchema(BaseModel):
     nombre: str
-    correo: str
+    correo: EmailStr
     telefono: str
     direccion: Optional[str] = None
 
@@ -24,7 +26,7 @@ class ProductoSchema(BaseModel):
     id_jefe: Optional[str] = None
 
 class DisponibilidadSchema(BaseModel):
-    fecha: str
+    fecha: date
     hora_inicio: str
     hora_fin: str
     estado: str
@@ -34,6 +36,8 @@ class ReservaSchema(BaseModel):
     id_cliente: str
     id_barbero: str
     id_servicio: str
-    fecha: str
+    fecha: date
     hora: str
     estado: str
+
+
