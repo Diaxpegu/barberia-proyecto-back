@@ -17,7 +17,7 @@ app = FastAPI()
 
 # Configuración CORS
 
-origins = ["https://barberia-proyecto-back-production-f876.up.railway.app"]
+origins = ["https://barberia-proyecto-front-production-3f2e.up.railway.app/"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
