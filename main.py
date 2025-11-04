@@ -1,25 +1,25 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from bson import errors, ObjectId
 import os
 import hashlib
 
 from database import (
     clientes_col, barberos_col, servicios_col, productos_col,
-    reservas_col, disponibilidades_col,admin_col
+    reservas_col, disponibilidades_col, admin_col
 )
-from crud import to_json, get_by_id, insert_document, update_document, delete_document
+from crud import to_json, insert_document, update_document, delete_document
 from schemas import (
     ClienteSchema, BarberoSchema, ServicioSchema, ProductoSchema,
     DisponibilidadSchema, ReservaSchema
 )
 
-app = FastAPI()
+app = FastAPI(title="API Barbería", version="1.0.0")
 
-# Configuración CORS
+origins = [
+    "https://barberia-proyecto-front-production-3f2e.up.railway.app",
+    "https://barberia-proyecto-back-production-f876.up.railway.app"
+]
 
-origins = ["https://barberia-proyecto-front-production-3f2e.up.railway.app", 
-           "https://barberia-proyecto-back-production-f876.up.railway.app"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -28,80 +28,44 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 🔹 Función para hash de contraseña
 def hash_password(password: str):
     return hashlib.sha256(password.encode()).hexdigest()
-
-# CLIENTES
 
 @app.get("/clientes/")
 def listar_clientes():
     clientes = list(clientes_col.find({}, {"_id": 0}))
     return clientes
 
-@app.post("/clientes/")
-def crear_cliente(cliente: ClienteSchema):
-    cliente_id = insert_document(clientes_col, cliente.dict())
-    return {"mensaje": "Cliente agregado", "id": cliente_id}
-
-# BARBEROS
-@app.get("/barberos/{barbero_id}")
-def obtener_barbero(barbero_id: str):
-    barbero = barberos_col.find_one({"_id": ObjectId(barbero_id)}, {"contrasena": 0})
-    
-    if not barbero:
-        raise HTTPException(status_code=404, detail="Barbero no encontrado")
-
-    barbero["_id"] = str(barbero["_id"])
-    return barbero
-
-@app.post("/barberos/")
-def crear_barbero(data: BarberoSchema):
-    barbero_data = data.dict()
-
-    disponibilidades = barbero_data.pop("disponibilidades")
-
-    # Hash de contraseña
-    barbero_data["contrasena"] = hash_password(barbero_data["contrasena"])
-
-    # insert barbero sin disponibilidades
-    barbero_id = insert_document(barberos_col, barbero_data)
-
-    # Insertar disponibilidades asociadas
-    for disp in disponibilidades:
-        disp_dict = disp
-        disp_dict["id_barbero"] = str(barbero_id)
-        insert_document(disponibilidades_col, disp_dict)
-
-    return {"mensaje": "Barbero y disponibilidades agregadas", "id": barbero_id}
-
-# SERVICIOS
+@app.get("/barberos/")
+def listar_barberos():
+    return [to_json(b) for b in barberos_col.find()]
 
 @app.get("/servicios/")
 def listar_servicios():
     return [to_json(s) for s in servicios_col.find()]
 
-@app.post("/servicios/")
-def crear_servicio(servicio: ServicioSchema):
-    servicio_id = insert_document(servicios_col, servicio.dict())
-    return {"mensaje": "Servicio agregado", "id": servicio_id}
-
-# PRODUCTOS
-
 @app.get("/productos/")
 def listar_productos():
     return [to_json(p) for p in productos_col.find()]
 
-@app.post("/productos/")
-def crear_producto(producto: ProductoSchema):
-    producto_id = insert_document(productos_col, producto.dict())
-    return {"mensaje": "Producto agregado", "id": producto_id}
-
-# DISPONIBILIDADES
-
 @app.get("/disponibilidad/libre/")
 def disponibilidad_libre():
-    return [to_json(d) for d in disponibilidades_col.find({"estado": "disponible"})]
+    barberos = list(barberos_col.find())
+    disponibles = []
+    for b in barberos:
+        for disp in b.get("disponibilidad", []):
+            if disp.get("estado") == "disponible":
+                disponibles.append({
+                    "_id": str(b["_id"]),
+                    "nombre": b["nombre"],
+                    "especialidades": b.get("especialidades", []),
+                    "fecha": disp.get("fecha"),
+                    "hora_inicio": disp.get("hora_inicio"),
+                    "hora_fin": disp.get("hora_fin"),
+                    "estado": disp.get("estado")
+                })
+                break
+    return disponibles
 
 @app.put("/disponibilidad/bloquear/{id_disponibilidad}")
 def bloquear_disponibilidad(id_disponibilidad: str):
@@ -109,13 +73,6 @@ def bloquear_disponibilidad(id_disponibilidad: str):
     if modified_count == 0:
         raise HTTPException(status_code=404, detail="Disponibilidad no encontrada")
     return {"mensaje": "Bloqueo realizado"}
-
-@app.post("/disponibilidad/")
-def crear_disponibilidad(disponibilidad: DisponibilidadSchema):
-    disp_id = insert_document(disponibilidades_col, disponibilidad.dict())
-    return {"mensaje": "Disponibilidad agregada", "id": disp_id}
-
-# RESERVAS
 
 @app.get("/reservas/pendientes/")
 def reservas_pendientes():
@@ -126,19 +83,14 @@ def confirmar_reserva(id_reserva: str):
     modified_count = update_document(reservas_col, id_reserva, {"estado": "confirmado"})
     if modified_count == 0:
         raise HTTPException(status_code=404, detail="Reserva no encontrada")
-    return {"mensaje": "Reserva confirmada"}
+    return {"mensaje": "Reserva confirmada ✅"}
 
 @app.delete("/reservas/cancelar/{id_reserva}")
 def cancelar_reserva(id_reserva: str):
     deleted_count = delete_document(reservas_col, id_reserva)
     if deleted_count == 0:
         raise HTTPException(status_code=404, detail="Reserva no encontrada")
-    return {"mensaje": "Reserva cancelada"}
-
-@app.post("/reservas/")
-def crear_reserva(reserva: ReservaSchema):
-    reserva_id = insert_document(reservas_col, reserva.dict())
-    return {"mensaje": "Reserva agregada", "id": reserva_id}
+    return {"mensaje": "Reserva cancelada ❌"}
 
 @app.get("/reservas/detalle/")
 def reservas_detalle():
@@ -153,23 +105,15 @@ def reservas_detalle():
 def crear_admin():
     admin_col.insert_one({
         "usuario": "admin",
-        "contrasena": "1234"
+        "contrasena": hash_password("1234")
     })
     return {"mensaje": "Admin creado ✅"}
-
-
-
-# ROOT
 
 @app.get("/")
 def root():
     return {"mensaje": "API conectada correctamente a MongoDB (BD test)"}
 
-
-# UVICORN
-
 if __name__ == "__main__":
     import uvicorn
     PORT = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=PORT)
-
