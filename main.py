@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from bson import errors
 import os
+import hashlib
 
 from database import (
     clientes_col, barberos_col, servicios_col, productos_col,
@@ -27,6 +28,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 🔹 Función para hash de contraseña
+def hash_password(password: str):
+    return hashlib.sha256(password.encode()).hexdigest()
+
 # CLIENTES
 
 @app.get("/clientes/")
@@ -40,15 +45,25 @@ def crear_cliente(cliente: ClienteSchema):
     return {"mensaje": "Cliente agregado", "id": cliente_id}
 
 # BARBEROS
-
-@app.get("/barberos/")
-def listar_barberos():
-    return [to_json(b) for b in barberos_col.find()]
-
 @app.post("/barberos/")
-def crear_barbero(barbero: BarberoSchema):
-    barbero_id = insert_document(barberos_col, barbero.dict())
-    return {"mensaje": "Barbero agregado", "id": barbero_id}
+def crear_barbero(data: BarberoSchema):
+    barbero_data = data.dict()
+
+    disponibilidades = barbero_data.pop("disponibilidades")
+
+    # Hash de contraseña
+    barbero_data["contrasena"] = hash_password(barbero_data["contrasena"])
+
+    # insert barbero sin disponibilidades
+    barbero_id = insert_document(barberos_col, barbero_data)
+
+    # Insertar disponibilidades asociadas
+    for disp in disponibilidades:
+        disp_dict = disp
+        disp_dict["id_barbero"] = str(barbero_id)
+        insert_document(disponibilidades_col, disp_dict)
+
+    return {"mensaje": "Barbero y disponibilidades agregadas", "id": barbero_id}
 
 # SERVICIOS
 
