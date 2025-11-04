@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from bson import ObjectId
 from datetime import datetime, timedelta
+from pydantic import BaseModel
 import os
 
 from database import (
@@ -28,6 +29,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+class LoginSchema(BaseModel):
+    usuario: str
+    contrasena: str
 
 @app.get("/")
 def root():
@@ -188,6 +193,18 @@ def reservas_detalle():
         {"$lookup": {"from": "servicios", "localField": "id_servicio", "foreignField": "_id", "as": "servicio"}}
     ]))
     return [to_json(r) for r in reservas]
+
+@app.post("/login/")
+def login(datos_login: LoginSchema):
+    barbero = barberos_col.find_one({"usuario": datos_login.usuario})
+    if barbero and barbero["contrasena"] == datos_login.contrasena:
+        return {"usuario": barbero["usuario"], "rol": "barbero"}
+
+    jefe = jefes_col.find_one({"usuario": datos_login.usuario})
+    if jefe and jefe["contrasena"] == datos_login.contrasena:
+        return {"usuario": jefe["usuario"], "rol": "jefe"}
+
+    raise HTTPException(status_code=404, detail="Usuario o contraseña incorrectos")
 
 def regenerar_disponibilidad():
     hoy = datetime.now().date()
