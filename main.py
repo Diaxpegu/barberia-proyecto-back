@@ -6,7 +6,7 @@ import hashlib
 
 from database import (
     clientes_col, barberos_col, servicios_col, productos_col,
-    reservas_col, disponibilidades_col
+    reservas_col, disponibilidades_col,admin_col
 )
 from crud import to_json, get_by_id, insert_document, update_document, delete_document
 from schemas import (
@@ -138,6 +138,15 @@ def reservas_detalle():
         {"$lookup": {"from": "servicios", "localField": "id_servicio", "foreignField": "_id", "as": "servicio"}}
     ]))
     return [to_json(r) for r in reservas]
+
+@app.post("/crear-admin/")
+def crear_admin():
+    admin_col.insert_one({
+        "usuario": "admin",
+        "contrasena": "1234"
+    })
+    return {"mensaje": "Admin creado ✅"}
+
 
 
 # ROOT

@@ -33,6 +33,7 @@ reservas_col = db["reservas"]
 disponibilidades_col = db["disponibilidades"]
 notificaciones_col = db["notificaciones"]
 jefes_col = db["jefes"]
+admin_col = db["admin"]
 
 
 """from pymongo import MongoClient
