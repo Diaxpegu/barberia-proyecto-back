@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from bson import ObjectId
+from datetime import datetime, timedelta
 import os
 
 from database import (
@@ -13,11 +14,10 @@ from schemas import (
     DisponibilidadSchema, ReservaSchema
 )
 
-app = FastAPI(title="API Barbería", version="1.0.1")
+app = FastAPI(title="API Barbería", version="1.2.0")
 
 origins = [
-    "https://barberia-proyecto-front-production-3f2e.up.railway.app",
-    "https://barberia-proyecto-back-production-f876.up.railway.app"
+    "https://barberia-proyecto-front-production-3f2e.up.railway.app"
 ]
 
 app.add_middleware(
@@ -35,16 +35,41 @@ def listar_clientes():
 
 @app.get("/barberos/")
 def listar_barberos():
-    return [to_json(b) for b in barberos_col.find()]
+    barberos_lista = []
+    for b in barberos_col.find():
+        barbero_data = to_json(b)
+        disponibilidades = barbero_data.get('disponibilidades')
+        if isinstance(disponibilidades, list):
+            if len(disponibilidades) > 0:
+                barbero_data['disponibilidades'] = f"{len(disponibilidades)} horarios definidos"
+            else:
+                barbero_data['disponibilidades'] = "Sin horarios"
+        else:
+            barbero_data['disponibilidades'] = "No definido"
+        if 'especialidad' not in barbero_data or not barbero_data['especialidad']:
+            barbero_data['especialidad'] = "No asignada"
+        barberos_lista.append(barbero_data)
+    return barberos_lista
 
 @app.post("/barberos/")
 def crear_barbero(barbero: BarberoSchema):
+    hoy = datetime.now().date()
+    disponibilidades = []
+    for i in range(7):
+        fecha = (hoy + timedelta(days=i)).isoformat()
+        for hora in ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"]:
+            disponibilidades.append({
+                "fecha": fecha,
+                "hora": hora,
+                "estado": "disponible"
+            })
+
     nuevo_barbero = {
         "nombre": barbero.nombre,
         "usuario": barbero.usuario,
         "contrasena": barbero.contrasena,
-        "especialidad": barbero.especialidad,
-        "disponibilidades": barbero.disponibilidades or []
+        "especialidad": barbero.especialidad or "No asignada",
+        "disponibilidades": disponibilidades
     }
 
     existente = barberos_col.find_one({"usuario": barbero.usuario})
@@ -84,19 +109,23 @@ def disponibilidad_libre():
                     "nombre": b["nombre"],
                     "especialidad": b.get("especialidad", ""),
                     "fecha": disp.get("fecha"),
-                    "hora_inicio": disp.get("hora_inicio"),
-                    "hora_fin": disp.get("hora_fin"),
+                    "hora": disp.get("hora"),
                     "estado": disp.get("estado")
                 })
-                break
     return disponibles
 
-@app.put("/disponibilidad/bloquear/{id_disponibilidad}")
-def bloquear_disponibilidad(id_disponibilidad: str):
-    modified_count = update_document(disponibilidades_col, id_disponibilidad, {"estado": "bloqueado"})
-    if modified_count == 0:
-        raise HTTPException(status_code=404, detail="Disponibilidad no encontrada")
-    return {"mensaje": "Bloqueo realizado"}
+@app.put("/disponibilidad/bloquear/{barbero_id}/{fecha}/{hora}")
+def bloquear_disponibilidad(barbero_id: str, fecha: str, hora: str):
+    try:
+        result = barberos_col.update_one(
+            {"_id": ObjectId(barbero_id), "disponibilidades": {"$elemMatch": {"fecha": fecha, "hora": hora}}},
+            {"$set": {"disponibilidades.$.estado": "bloqueado"}}
+        )
+        if result.modified_count == 0:
+            raise HTTPException(status_code=404, detail="Disponibilidad no encontrada")
+        return {"mensaje": "Horario bloqueado correctamente"}
+    except Exception:
+        raise HTTPException(status_code=400, detail="Error al bloquear disponibilidad")
 
 @app.get("/reservas/pendientes/")
 def reservas_pendientes():
@@ -147,7 +176,29 @@ def login(datos: dict):
 def root():
     return {"mensaje": "API conectada correctamente a MongoDB (BD test)"}
 
+def regenerar_disponibilidad():
+    hoy = datetime.now().date()
+    futuro = hoy + timedelta(days=7)
+    for barbero in barberos_col.find():
+        fechas_existentes = [d["fecha"] for d in barbero.get("disponibilidades", [])]
+        nuevas_disponibilidades = []
+        for i in range(7):
+            fecha = (futuro + timedelta(days=i)).isoformat()
+            if fecha not in fechas_existentes:
+                for hora in ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"]:
+                    nuevas_disponibilidades.append({
+                        "fecha": fecha,
+                        "hora": hora,
+                        "estado": "disponible"
+                    })
+        if nuevas_disponibilidades:
+            barberos_col.update_one(
+                {"_id": barbero["_id"]},
+                {"$push": {"disponibilidades": {"$each": nuevas_disponibilidades}}}
+            )
+
 if __name__ == "__main__":
+    regenerar_disponibilidad()
     import uvicorn
     PORT = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=PORT)
