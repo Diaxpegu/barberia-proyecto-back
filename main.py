@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from bson import ObjectId
+from bson import ObjectId, errors
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 import os
@@ -159,12 +159,12 @@ def bloquear_disponibilidad(barbero_id: str, fecha: str, hora: str):
     try:
         r = barberos_col.update_one(
             {"_id": ObjectId(barbero_id), "disponibilidades": {"$elemMatch": {"fecha": fecha, "hora": hora}}},
-            {"$set": {"disponibilidades.$.estado": "bloqueado"}}
+            {"$set": {"disponibilidades.$.estado": "ocupado"}} # Usamos "ocupado"
         )
     except Exception:
         raise HTTPException(status_code=400, detail="Error al bloquear disponibilidad")
     if r.modified_count == 0:
-        raise HTTPException(status_code=404, detail="Disponibilidad no encontrada")
+        raise HTTPException(status_code=404, detail="Disponibilidad no encontrada para bloquear")
     return {"mensaje": "Horario bloqueado correctamente"}
 
 @app.post("/login/")
@@ -187,17 +187,48 @@ def login(datos_login: LoginSchema):
 
     raise HTTPException(status_code=404, detail="Usuario o contraseña incorrectos")
 
+# --- RUTA NUEVA PARA GUARDAR RESERVAS ---
+@app.post("/reservas/")
+def crear_reserva(reserva: ReservaSchema):
+    try:
+        # Convertir IDs de string a ObjectId
+        barbero_oid = ObjectId(reserva.id_barbero)
+        # Asumiendo que id_cliente y id_servicio también son OIDs
+        # Si no lo son, elimina las conversiones ObjectId()
+        
+        datos_reserva = reserva.dict()
+        datos_reserva["id_barbero"] = barbero_oid
+        # datos_reserva["id_cliente"] = ObjectId(reserva.id_cliente)
+        # datos_reserva["id_servicio"] = ObjectId(reserva.id_servicio)
+        
+        # 1. Guardar la reserva
+        reserva_id = insert_document(reservas_col, datos_reserva)
+        
+        # 2. Actualizar la disponibilidad del barbero
+        r = barberos_col.update_one(
+            {"_id": barbero_oid, "disponibilidades": {"$elemMatch": {"fecha": str(reserva.fecha), "hora": reserva.hora}}},
+            {"$set": {"disponibilidades.$.estado": "ocupado"}}
+        )
+        
+        if r.modified_count == 0:
+            # Esto es un problema, significa que la hora no estaba disponible
+            raise HTTPException(status_code=404, detail="El horario seleccionado ya no está disponible.")
+
+        return {"mensaje": "Reserva creada exitosamente", "id_reserva": reserva_id}
+
+    except errors.InvalidId:
+        raise HTTPException(status_code=400, detail="ID de barbero o cliente inválido")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+
+
+# --- RUTAS PARA EL PANEL DE BARBERO ---
 @app.get("/barbero/agenda/{barbero_id}")
 def get_agenda_barbero(barbero_id: str):
     """Obtiene la agenda (citas pendientes/confirmadas) de un barbero."""
     try:
-
         oid = ObjectId(barbero_id) 
-
-        query = {
-            "id_barbero": oid, 
-            "estado": {"$in": ["pendiente", "confirmado", "agendado"]}
-        }
+        query = {"id_barbero": oid, "estado": {"$in": ["pendiente", "confirmado", "agendado"]}}
         agenda = list(reservas_col.find(query))
         return [to_json(cita) for cita in agenda]
     except errors.InvalidId:
@@ -212,7 +243,6 @@ def get_historial_barbero(barbero_id: str):
         oid = ObjectId(barbero_id)
         query = {"id_barbero": oid, "estado": "completado"}
         historial = list(reservas_col.find(query))
-
         return [to_json(cita) for cita in historial]
     except errors.InvalidId:
         raise HTTPException(status_code=400, detail="ID de barbero inválido")
