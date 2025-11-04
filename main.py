@@ -167,33 +167,6 @@ def bloquear_disponibilidad(barbero_id: str, fecha: str, hora: str):
         raise HTTPException(status_code=404, detail="Disponibilidad no encontrada")
     return {"mensaje": "Horario bloqueado correctamente"}
 
-@app.get("/reservas/pendientes/")
-def reservas_pendientes():
-    return [to_json(r) for r in reservas_col.find({"estado": "pendiente"})]
-
-@app.put("/reservas/confirmar/{id_reserva}")
-def confirmar_reserva(id_reserva: str):
-    modified = update_document(reservas_col, id_reserva, {"estado": "confirmado"})
-    if modified == 0:
-        raise HTTPException(status_code=404, detail="Reserva no encontrada")
-    return {"mensaje": "Reserva confirmada"}
-
-@app.delete("/reservas/cancelar/{id_reserva}")
-def cancelar_reserva(id_reserva: str):
-    deleted = delete_document(reservas_col, id_reserva)
-    if deleted == 0:
-        raise HTTPException(status_code=404, detail="Reserva no encontrada")
-    return {"mensaje": "Reserva cancelada"}
-
-@app.get("/reservas/detalle/")
-def reservas_detalle():
-    reservas = list(reservas_col.aggregate([
-        {"$lookup": {"from": "clientes", "localField": "id_cliente", "foreignField": "_id", "as": "cliente"}},
-        {"$lookup": {"from": "barberos", "localField": "id_barbero", "foreignField": "_id", "as": "barbero"}},
-        {"$lookup": {"from": "servicios", "localField": "id_servicio", "foreignField": "_id", "as": "servicio"}}
-    ]))
-    return [to_json(r) for r in reservas]
-
 @app.post("/login/")
 def login(datos_login: LoginSchema):
     barbero = barberos_col.find_one({"usuario": datos_login.usuario})
