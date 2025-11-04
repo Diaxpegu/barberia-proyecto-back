@@ -1,7 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import os
-import hashlib
 
 from database import (
     clientes_col, barberos_col, servicios_col, productos_col,
@@ -27,9 +26,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-def hash_password(password: str):
-    return hashlib.sha256(password.encode()).hexdigest()
 
 @app.get("/clientes/")
 def listar_clientes():
@@ -83,14 +79,14 @@ def confirmar_reserva(id_reserva: str):
     modified_count = update_document(reservas_col, id_reserva, {"estado": "confirmado"})
     if modified_count == 0:
         raise HTTPException(status_code=404, detail="Reserva no encontrada")
-    return {"mensaje": "Reserva confirmada ✅"}
+    return {"mensaje": "Reserva confirmada"}
 
 @app.delete("/reservas/cancelar/{id_reserva}")
 def cancelar_reserva(id_reserva: str):
     deleted_count = delete_document(reservas_col, id_reserva)
     if deleted_count == 0:
         raise HTTPException(status_code=404, detail="Reserva no encontrada")
-    return {"mensaje": "Reserva cancelada ❌"}
+    return {"mensaje": "Reserva cancelada"}
 
 @app.get("/reservas/detalle/")
 def reservas_detalle():
@@ -101,13 +97,26 @@ def reservas_detalle():
     ]))
     return [to_json(r) for r in reservas]
 
-@app.post("/crear-admin/")
-def crear_admin():
-    admin_col.insert_one({
-        "usuario": "admin",
-        "contrasena": hash_password("1234")
-    })
-    return {"mensaje": "Admin creado ✅"}
+@app.post("/login/")
+def login(datos: dict):
+    """Verifica si el usuario existe como admin o barbero."""
+    usuario = datos.get("usuario")
+    contrasena = datos.get("contrasena")
+
+    if not usuario or not contrasena:
+        raise HTTPException(status_code=400, detail="Faltan credenciales")
+
+    # Buscar en administradores
+    admin = admin_col.find_one({"usuario": usuario})
+    if admin and admin["contrasena"] == contrasena:
+        return {"mensaje": "Login exitoso", "rol": "admin", "usuario": usuario}
+
+    # Buscar en barberos
+    barbero = barberos_col.find_one({"usuario": usuario})
+    if barbero and barbero["contrasena"] == contrasena:
+        return {"mensaje": "Login exitoso", "rol": "barbero", "usuario": barbero["nombre"]}
+
+    raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos")
 
 @app.get("/")
 def root():
