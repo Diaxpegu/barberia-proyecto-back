@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from bson import errors
+from bson import errors, ObjectId
 import os
 import hashlib
 
@@ -45,6 +45,16 @@ def crear_cliente(cliente: ClienteSchema):
     return {"mensaje": "Cliente agregado", "id": cliente_id}
 
 # BARBEROS
+@app.get("/barberos/{barbero_id}")
+def obtener_barbero(barbero_id: str):
+    barbero = barberos_col.find_one({"_id": ObjectId(barbero_id)}, {"contrasena": 0})
+    
+    if not barbero:
+        raise HTTPException(status_code=404, detail="Barbero no encontrado")
+
+    barbero["_id"] = str(barbero["_id"])
+    return barbero
+
 @app.post("/barberos/")
 def crear_barbero(data: BarberoSchema):
     barbero_data = data.dict()
