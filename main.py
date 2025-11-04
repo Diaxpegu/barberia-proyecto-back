@@ -167,7 +167,6 @@ def bloquear_disponibilidad(barbero_id: str, fecha: str, hora: str):
         raise HTTPException(status_code=404, detail="Disponibilidad no encontrada")
     return {"mensaje": "Horario bloqueado correctamente"}
 
-# --- INICIO DE LA CORRECCIÓN ---
 @app.post("/login/")
 def login(datos_login: LoginSchema):
     barbero = barberos_col.find_one({"usuario": datos_login.usuario})
@@ -175,7 +174,7 @@ def login(datos_login: LoginSchema):
         return {
             "usuario": barbero["usuario"], 
             "rol": "barbero",
-            "_id": str(barbero["_id"])  # Devolvemos el ID
+            "_id": str(barbero["_id"])
         }
 
     jefe = jefes_col.find_one({"usuario": datos_login.usuario})
@@ -183,11 +182,43 @@ def login(datos_login: LoginSchema):
         return {
             "usuario": jefe["usuario"], 
             "rol": "jefe",
-            "_id": str(jefe["_id"])  # Devolvemos el ID
+            "_id": str(jefe["_id"])
         }
 
     raise HTTPException(status_code=404, detail="Usuario o contraseña incorrectos")
-# --- FIN DE LA CORRECCIÓN ---
+
+@app.get("/barbero/agenda/{barbero_id}")
+def get_agenda_barbero(barbero_id: str):
+    """Obtiene la agenda (citas pendientes/confirmadas) de un barbero."""
+    try:
+
+        oid = ObjectId(barbero_id) 
+
+        query = {
+            "id_barbero": oid, 
+            "estado": {"$in": ["pendiente", "confirmado", "agendado"]}
+        }
+        agenda = list(reservas_col.find(query))
+        return [to_json(cita) for cita in agenda]
+    except errors.InvalidId:
+        raise HTTPException(status_code=400, detail="ID de barbero inválido")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/barbero/historial/{barbero_id}")
+def get_historial_barbero(barbero_id: str):
+    """Obtiene el historial (citas completadas) de un barbero."""
+    try:
+        oid = ObjectId(barbero_id)
+        query = {"id_barbero": oid, "estado": "completado"}
+        historial = list(reservas_col.find(query))
+
+        return [to_json(cita) for cita in historial]
+    except errors.InvalidId:
+        raise HTTPException(status_code=400, detail="ID de barbero inválido")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 def regenerar_disponibilidad():
     hoy = datetime.now().date()
