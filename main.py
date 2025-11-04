@@ -167,17 +167,27 @@ def bloquear_disponibilidad(barbero_id: str, fecha: str, hora: str):
         raise HTTPException(status_code=404, detail="Disponibilidad no encontrada")
     return {"mensaje": "Horario bloqueado correctamente"}
 
+# --- INICIO DE LA CORRECCIÓN ---
 @app.post("/login/")
 def login(datos_login: LoginSchema):
     barbero = barberos_col.find_one({"usuario": datos_login.usuario})
     if barbero and barbero["contrasena"] == datos_login.contrasena:
-        return {"usuario": barbero["usuario"], "rol": "barbero"}
+        return {
+            "usuario": barbero["usuario"], 
+            "rol": "barbero",
+            "_id": str(barbero["_id"])  # Devolvemos el ID
+        }
 
     jefe = jefes_col.find_one({"usuario": datos_login.usuario})
     if jefe and jefe["contrasena"] == datos_login.contrasena:
-        return {"usuario": jefe["usuario"], "rol": "jefe"}
+        return {
+            "usuario": jefe["usuario"], 
+            "rol": "jefe",
+            "_id": str(jefe["_id"])  # Devolvemos el ID
+        }
 
     raise HTTPException(status_code=404, detail="Usuario o contraseña incorrectos")
+# --- FIN DE LA CORRECCIÓN ---
 
 def regenerar_disponibilidad():
     hoy = datetime.now().date()
