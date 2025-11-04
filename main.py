@@ -13,7 +13,7 @@ from schemas import (
     DisponibilidadSchema, ReservaSchema
 )
 
-app = FastAPI(title="API Barbería", version="1.0.0")
+app = FastAPI(title="API Barbería", version="1.0.1")
 
 origins = [
     "https://barberia-proyecto-front-production-3f2e.up.railway.app",
@@ -43,8 +43,8 @@ def crear_barbero(barbero: BarberoSchema):
         "nombre": barbero.nombre,
         "usuario": barbero.usuario,
         "contrasena": barbero.contrasena,
-        "especialidades": barbero.especialidades,
-        "disponibilidad": barbero.disponibilidad or []
+        "especialidad": barbero.especialidad,
+        "disponibilidades": barbero.disponibilidades or []
     }
 
     existente = barberos_col.find_one({"usuario": barbero.usuario})
@@ -77,12 +77,12 @@ def disponibilidad_libre():
     barberos = list(barberos_col.find())
     disponibles = []
     for b in barberos:
-        for disp in b.get("disponibilidad", []):
+        for disp in b.get("disponibilidades", []):
             if disp.get("estado") == "disponible":
                 disponibles.append({
                     "_id": str(b["_id"]),
                     "nombre": b["nombre"],
-                    "especialidades": b.get("especialidades", []),
+                    "especialidad": b.get("especialidad", ""),
                     "fecha": disp.get("fecha"),
                     "hora_inicio": disp.get("hora_inicio"),
                     "hora_fin": disp.get("hora_fin"),
