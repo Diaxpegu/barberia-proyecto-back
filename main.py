@@ -281,7 +281,7 @@ def get_agenda_barbero(barbero_id: str):
     try:
         oid = ObjectId(barbero_id)
         reservas = list(reservas_col.aggregate([
-            {"$match": {"id_barbero": oid, "estado": {"$in": ["confirmado", "agendado"]}}},
+            {"$match": {"id_barbero": oid, "estado": {"$in": ["pendiente", "confirmado", "agendado"]}}},
             {"$lookup": {"from": "clientes", "localField": "id_cliente", "foreignField": "_id", "as": "cliente"}},
             {"$lookup": {"from": "servicios", "localField": "id_servicio", "foreignField": "_id", "as": "servicio"}},
         ]))
