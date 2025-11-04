@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from bson import ObjectId, errors
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from pydantic import BaseModel
 import os
 
@@ -15,7 +15,7 @@ from schemas import (
     DisponibilidadSchema, ReservaSchema
 )
 
-app = FastAPI(title="API Barbería", version="1.5.0")
+app = FastAPI(title="API Barbería", version="1.6.0")
 
 origins = [
     "https://barberia-proyecto-front-production-3f2e.up.railway.app",
@@ -151,13 +151,24 @@ def crear_reserva(reserva: ReservaSchema):
     try:
         barbero_oid = ObjectId(reserva.id_barbero)
         datos_reserva = reserva.dict()
+
+      
+        if isinstance(datos_reserva.get("fecha"), (datetime, date)):
+            datos_reserva["fecha"] = str(datos_reserva["fecha"])
+
         datos_reserva["id_barbero"] = barbero_oid
+
         reserva_id = insert_document(reservas_col, datos_reserva)
+
         barberos_col.update_one(
-            {"_id": barbero_oid, "disponibilidades": {"$elemMatch": {"fecha": str(reserva.fecha), "hora": reserva.hora}}},
+            {"_id": barbero_oid, "disponibilidades": {"$elemMatch": {"fecha": datos_reserva["fecha"], "hora": reserva.hora}}},
             {"$set": {"disponibilidades.$.estado": "ocupado"}}
         )
-        return {"mensaje": "Reserva creada exitosamente", "id_reserva": reserva_id}
+
+        return {"mensaje": "Reserva creada exitosamente", "id_reserva": str(reserva_id)}
+
+    except errors.InvalidId:
+        raise HTTPException(status_code=400, detail="ID de barbero inválido")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
@@ -200,6 +211,7 @@ def get_historial_barbero(barbero_id: str):
         raise HTTPException(status_code=400, detail="ID inválido")
 
 
+
 def regenerar_disponibilidad():
     hoy = datetime.now().date()
     futuro = hoy + timedelta(days=7)
@@ -213,6 +225,8 @@ def regenerar_disponibilidad():
                     nuevas.append({"fecha": fecha, "hora": hora, "estado": "disponible"})
         if nuevas:
             barberos_col.update_one({"_id": barbero["_id"]}, {"$push": {"disponibilidades": {"$each": nuevas}}})
+
+
 
 if __name__ == "__main__":
     regenerar_disponibilidad()
