@@ -1,10 +1,11 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from bson import ObjectId
 import os
 
 from database import (
     clientes_col, barberos_col, servicios_col, productos_col,
-    reservas_col, disponibilidades_col, admin_col
+    reservas_col, disponibilidades_col, jefes_col
 )
 from crud import to_json, insert_document, update_document, delete_document
 from schemas import (
@@ -35,6 +36,33 @@ def listar_clientes():
 @app.get("/barberos/")
 def listar_barberos():
     return [to_json(b) for b in barberos_col.find()]
+
+@app.post("/barberos/")
+def crear_barbero(barbero: BarberoSchema):
+    nuevo_barbero = {
+        "nombre": barbero.nombre,
+        "usuario": barbero.usuario,
+        "contrasena": barbero.contrasena,
+        "especialidades": barbero.especialidades,
+        "disponibilidad": barbero.disponibilidad or []
+    }
+
+    existente = barberos_col.find_one({"usuario": barbero.usuario})
+    if existente:
+        raise HTTPException(status_code=400, detail="El usuario ya existe")
+
+    barbero_id = insert_document(barberos_col, nuevo_barbero)
+    return {"mensaje": "Barbero creado correctamente", "id": str(barbero_id)}
+
+@app.delete("/barberos/{barbero_id}")
+def eliminar_barbero(barbero_id: str):
+    try:
+        result = barberos_col.delete_one({"_id": ObjectId(barbero_id)})
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Barbero no encontrado")
+        return {"mensaje": "Barbero eliminado correctamente"}
+    except Exception:
+        raise HTTPException(status_code=400, detail="ID inválido")
 
 @app.get("/servicios/")
 def listar_servicios():
@@ -99,22 +127,19 @@ def reservas_detalle():
 
 @app.post("/login/")
 def login(datos: dict):
-    """Verifica si el usuario existe como admin o barbero."""
     usuario = datos.get("usuario")
     contrasena = datos.get("contrasena")
 
     if not usuario or not contrasena:
         raise HTTPException(status_code=400, detail="Faltan credenciales")
 
-    # Buscar en administradores
-    admin = admin_col.find_one({"usuario": usuario})
-    if admin and admin["contrasena"] == contrasena:
-        return {"mensaje": "Login exitoso", "rol": "admin", "usuario": usuario}
+    jefe = jefes_col.find_one({"usuario": usuario})
+    if jefe and jefe["contrasena"] == contrasena:
+        return {"mensaje": "Inicio de sesión exitoso", "rol": "jefe", "usuario": usuario}
 
-    # Buscar en barberos
     barbero = barberos_col.find_one({"usuario": usuario})
     if barbero and barbero["contrasena"] == contrasena:
-        return {"mensaje": "Login exitoso", "rol": "barbero", "usuario": barbero["nombre"]}
+        return {"mensaje": "Inicio de sesión exitoso", "rol": "barbero", "usuario": barbero["nombre"]}
 
     raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos")
 
