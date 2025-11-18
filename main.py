@@ -3,15 +3,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from bson import ObjectId, errors
 from datetime import datetime, timedelta, date
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List # Asegurar List está importado
 import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from apscheduler.schedulers.background import BackgroundScheduler
-from contextlib import asynccontextmanager # Nuevo import
+from contextlib import asynccontextmanager
 
-# Importaciones locales
+# Importaciones locales (Asegúrate de que estos archivos estén presentes)
 from database import (
     clientes_col, barberos_col, servicios_col, productos_col,
     reservas_col, disponibilidades_col, jefes_col
@@ -22,23 +22,18 @@ from schemas import (
     DisponibilidadSchema, ReservaSchema
 )
 
-# CONFIGURACIÓN DE EMAIL
-
+# CONFIGURACIÓN DE EMAIL 
 SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 465
-SENDER_EMAIL = "barberiavalaint@gmail.com"
+SMTP_PORT = 465 
+SENDER_EMAIL = "barberiavalaint@gmail.com" 
 SENDER_PASSWORD = "kijs kjzj vpdn fayj" 
 
-# INICIALIZACIÓN DE SCHEDULER 
+
+# INICIALIZACIÓN DE SCHEDULER (Objeto global)
 
 scheduler = BackgroundScheduler()
 
 # LÓGICA DE ENVÍO DE CORREOS Y TAREAS
-SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 465 
-SENDER_EMAIL = "barberiavalaint@gmail.com" 
-SENDER_PASSWORD = "kijs kjzj vpdn fayj"    
-
 
 def enviar_correo_simple(destinatario, asunto, mensaje_html):
     """Envía un correo usando Gmail SMTP con SMTP_SSL (Puerto 465)"""
@@ -50,28 +45,28 @@ def enviar_correo_simple(destinatario, asunto, mensaje_html):
     msg.attach(MIMEText(mensaje_html, 'html'))
 
     try:
-        server = smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) 
+        # CAMBIO CRÍTICO: Añadir timeout=10 para evitar que el job se cuelgue
+        server = smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, timeout=10) 
         server.login(SENDER_EMAIL, SENDER_PASSWORD)
         server.send_message(msg)
         server.quit()
         print(f"📧 Correo enviado a {destinatario}")
         return True
     except Exception as e:
-        print(f"❌ Error enviando correo: {e}") 
+        print(f"❌ Error enviando correo (con timeout): {e}") 
         return False
 
 def tarea_recordatorios():
-    """Busca reservas para MAÑANA y envía recordatorios"""
+    """Busca reservas para HOY (para prueba rápida) y envía recordatorios"""
     print("🔄 Comprobando recordatorios de citas...")
     
-    # Calcular fecha de mañana
+    # LÓGICA TEMPORAL PARA PRUEBA RÁPIDA (BUSCA RESERVAS DE HOY)
     hoy = datetime.now()
-    manana = hoy + timedelta(days=1)
-    fecha_manana = manana.strftime("%Y-%m-%d")
+    fecha_test = hoy.strftime("%Y-%m-%d") # Filtra por la fecha actual
 
-    # Buscar reservas pendientes/confirmadas para esa fecha que NO tengan aviso enviado
+    # Buscar reservas pendientes/confirmadas para la fecha de HOY
     cursor = reservas_col.find({
-        "fecha": fecha_manana,
+        "fecha": fecha_test,
         "estado": {"$in": ["pendiente", "confirmado"]},
         "notificacion_enviada": {"$ne": True} 
     })
@@ -86,13 +81,13 @@ def tarea_recordatorios():
             servicio = reserva.get("servicio_nombre", "Servicio de Barbería")
             
             # Crear mensaje
-            asunto = "⏰ Recordatorio: Tu cita en VALIANT Barbería es mañana"
+            asunto = "⏰ Recordatorio: Tu cita en VALIANT Barbería es mañana" 
             cuerpo = f"""
             <div style="font-family: Arial, sans-serif; color: #333;">
                 <h2 style="color: #d4af37;">Hola {nombre},</h2>
-                <p>Te recordamos que tienes una cita programada para mañana en <strong>VALIANT</strong>.</p>
+                <p>Te recordamos que tienes una cita programada para **HOY** en <strong>VALIANT</strong>.</p>
                 <ul style="background-color: #f9f9f9; padding: 15px; border-radius: 5px;">
-                    <li><strong>📅 Fecha:</strong> {fecha_manana}</li>
+                    <li><strong>📅 Fecha:</strong> {fecha_test}</li>
                     <li><strong>🕒 Hora:</strong> {hora}</li>
                     <li><strong>✂️ Servicio:</strong> {servicio}</li>
                 </ul>
@@ -104,24 +99,29 @@ def tarea_recordatorios():
             
             # Enviar
             if enviar_correo_simple(cliente["correo"], asunto, cuerpo):
+                # Marcar como enviada para no repetir
                 reservas_col.update_one(
                     {"_id": reserva["_id"]},
                     {"$set": {"notificacion_enviada": True}}
                 )
 
 
-# LIFESPAN 
+# LIFESPAN
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("🚀 Iniciando sistema de recordatorios automáticos.")
+    # INTERVALO DE 1 MINUTO PARA PRUEBA RÁPIDA (CAMBIAR A 60 DESPUÉS DE LA PRUEBA)
     scheduler.add_job(tarea_recordatorios, 'interval', minutes=1)
     scheduler.start()
-    yield 
+    yield # La aplicación continúa ejecutándose
+    # Lógica de Shutdown: Detiene el scheduler
     print("🛑 Deteniendo sistema de recordatorios.")
     scheduler.shutdown()
 
+
 # INICIALIZACIÓN DE LA APP (con lifespan)
+
 
 app = FastAPI(title="API Barbería", version="1.9.0", lifespan=lifespan)
 
@@ -336,7 +336,7 @@ def crear_reserva(reserva: ReservaCreate):
             "fecha": fecha_str,
             "hora": reserva.hora,
             "estado": "pendiente",
-            "notificacion_enviada": False
+            "notificacion_enviada": False 
         }
         rid = insert_document(reservas_col, doc_reserva)
 
