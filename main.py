@@ -6,15 +6,18 @@ from pydantic import BaseModel
 from typing import Optional
 import os
 
-# Importar colecciones desde database.py
-from database import db, clientes_col, barberos_col, servicios_col, productos_col, reservas_col, disponibilidades_col, jefes_col, admin_col
+# Colecciones
+from database import db, clientes_col, barberos_col, servicios_col, productos_col, reservas_col, jefes_col
 from crud import to_json, insert_document, update_document, delete_document
-from schemas import ClienteSchema, BarberoSchema, ServicioSchema, ProductoSchema, DisponibilidadSchema, ReservaSchema
+
+# Scheduler
 from scheduler import iniciar_scheduler
 
 app = FastAPI(title="API Barbería", version="1.9.0")
 
-# Configuración de CORS
+# -----------------------
+# CORS
+# -----------------------
 origins = [
     "https://barberia-proyecto-front-production-3f2e.up.railway.app",
     "https://barberia-proyecto-back-production-f876.up.railway.app"
@@ -64,9 +67,7 @@ def root():
 
 @app.post("/login/")
 def login(datos_login: LoginSchema):
-    usuario = datos_login.usuario
-    contrasena = datos_login.contrasena
-
+    usuario, contrasena = datos_login.usuario, datos_login.contrasena
     barbero = barberos_col.find_one({"usuario": usuario})
     if barbero and barbero.get("contrasena") == contrasena:
         return {"usuario": barbero["usuario"], "rol": "barbero", "_id": str(barbero["_id"])}
@@ -85,7 +86,7 @@ def listar_clientes():
     return [to_json(c) for c in clientes_col.find()]
 
 @app.post("/clientes/")
-def crear_cliente(cliente: ClienteSchema):
+def crear_cliente(cliente):
     if clientes_col.find_one({"correo": cliente.correo}):
         raise HTTPException(status_code=400, detail="El cliente ya existe")
     cid = insert_document(clientes_col, cliente.dict())
@@ -113,15 +114,11 @@ def listar_barberos():
     lista = []
     for b in barberos_col.find():
         data = to_json(b)
-        data.pop("contrasena", None)  # Quitar la contraseña
+        data.pop("contrasena", None)
         data["especialidad"] = data.get("especialidad") or "No asignada"
-        
-        # Asegurarse de que disponibilidades sea siempre lista
         data["disponibilidades"] = data.get("disponibilidades", [])
-
         lista.append(data)
     return lista
-
 
 @app.get("/barberos/{barbero_id}")
 def obtener_barbero(barbero_id: str):
@@ -131,20 +128,18 @@ def obtener_barbero(barbero_id: str):
     data = to_json(b)
     data.pop("contrasena", None)
     data["especialidad"] = data.get("especialidad") or "No asignada"
+    data["disponibilidades"] = data.get("disponibilidades", [])
     return data
 
 @app.post("/barberos/")
-def crear_barbero(barbero: BarberoSchema):
+def crear_barbero(barbero):
     if barberos_col.find_one({"usuario": barbero.usuario}):
         raise HTTPException(status_code=400, detail="El usuario ya existe")
-    
     hoy = datetime.now().date()
-    disponibilidades = []
-    for i in range(7):
-        fecha = (hoy + timedelta(days=i)).isoformat()
-        for hora in ["08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00"]:
-            disponibilidades.append({"fecha": fecha, "hora": hora, "estado": "disponible"})
-    
+    disponibilidades = [
+        {"fecha": (hoy + timedelta(days=i)).isoformat(), "hora": h, "estado": "disponible"}
+        for i in range(7) for h in ["08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00"]
+    ]
     nuevo = {
         "nombre": barbero.nombre,
         "usuario": barbero.usuario,
@@ -172,18 +167,13 @@ def eliminar_barbero(barbero_id: str):
         raise HTTPException(status_code=404, detail="Barbero no encontrado")
     return {"mensaje": "Barbero eliminado correctamente"}
 
-# -----------------------
-# DISPONIBILIDADES POR BARBERO
-# -----------------------
+# Disponibilidades
 @app.get("/barberos/{barbero_id}/disponibilidades")
 def obtener_disponibilidades(barbero_id: str):
     barbero = barberos_col.find_one({"_id": ObjectId(barbero_id)})
     if not barbero:
         raise HTTPException(status_code=404, detail="Barbero no encontrado")
-    
-    # Obtener solo las disponibilidades
-    disponibilidades = barbero.get("disponibilidades", [])
-    return {"barbero_id": barbero_id, "nombre": barbero["nombre"], "disponibilidades": disponibilidades}
+    return {"barbero_id": barbero_id, "nombre": barbero["nombre"], "disponibilidades": barbero.get("disponibilidades", [])}
 
 @app.put("/disponibilidad/bloquear/{barbero_id}/{fecha}/{hora}")
 def bloquear_disponibilidad(barbero_id: str, fecha: str, hora: str):
@@ -203,7 +193,7 @@ def listar_servicios():
     return [to_json(s) for s in servicios_col.find()]
 
 @app.post("/servicios/")
-def crear_servicio(servicio: ServicioSchema):
+def crear_servicio(servicio):
     sid = insert_document(servicios_col, servicio.dict())
     return {"mensaje": "Servicio creado correctamente", "id": sid}
 
@@ -221,7 +211,6 @@ def eliminar_servicio(servicio_id: str):
         raise HTTPException(status_code=404, detail="Servicio no encontrado")
     return {"mensaje": "Servicio eliminado correctamente"}
 
-
 # -----------------------
 # PRODUCTOS
 # -----------------------
@@ -230,7 +219,7 @@ def listar_productos():
     return [to_json(p) for p in productos_col.find()]
 
 @app.post("/productos/")
-def crear_producto(producto: ProductoSchema):
+def crear_producto(producto):
     pid = insert_document(productos_col, producto.dict())
     return {"mensaje": "Producto creado correctamente", "id": pid}
 
@@ -248,8 +237,6 @@ def eliminar_producto(producto_id: str):
         raise HTTPException(status_code=404, detail="Producto no encontrado")
     return {"mensaje": "Producto eliminado correctamente"}
 
-
-
 # -----------------------
 # RESERVAS
 # -----------------------
@@ -264,14 +251,14 @@ def crear_reserva(reserva: ReservaCreate):
         fecha_str = str(reserva.fecha)
         cliente_oid = None
 
-        if reserva.id_cliente and reserva.id_cliente.strip() != "":
+        if reserva.id_cliente and reserva.id_cliente.strip():
             try:
                 cliente_oid = ObjectId(reserva.id_cliente)
-            except Exception:
+            except:
                 cliente_oid = None
 
         if not cliente_oid:
-            if not reserva.nombre_cliente or not reserva.email_cliente or not reserva.telefono_cliente:
+            if not (reserva.nombre_cliente and reserva.email_cliente and reserva.telefono_cliente):
                 raise HTTPException(status_code=400, detail="Faltan datos del cliente")
             cliente_doc = {
                 "nombre": f"{reserva.nombre_cliente.strip()} {reserva.apellido_cliente.strip() if reserva.apellido_cliente else ''}".strip(),
@@ -280,16 +267,13 @@ def crear_reserva(reserva: ReservaCreate):
                 "direccion": None
             }
             existente = clientes_col.find_one({"correo": cliente_doc["correo"]})
-            if existente:
-                cliente_oid = existente["_id"]
-            else:
-                cliente_oid = insert_document(clientes_col, cliente_doc)
+            cliente_oid = existente["_id"] if existente else insert_document(clientes_col, cliente_doc)
 
         servicio_oid = None
-        if reserva.id_servicio and reserva.id_servicio.strip() != "":
+        if reserva.id_servicio and reserva.id_servicio.strip():
             try:
                 servicio_oid = ObjectId(reserva.id_servicio)
-            except Exception:
+            except:
                 servicio_oid = None
 
         doc_reserva = {
@@ -311,7 +295,6 @@ def crear_reserva(reserva: ReservaCreate):
         return {"mensaje": "Reserva creada correctamente (pendiente de confirmación)", "id_reserva": str(rid)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
-
 
 @app.put("/reservas/actualizar/{reserva_id}")
 def actualizar_reserva(reserva_id: str, data: dict = Body(...)):
@@ -344,12 +327,13 @@ def get_agenda_barbero(barbero_id: str):
 def get_historial_barbero(barbero_id: str):
     try:
         oid = ObjectId(barbero_id)
-        query = {"id_barbero": oid, "estado": "completado"}
-        return [to_json(cita) for cita in reservas_col.find(query)]
+        return [to_json(cita) for cita in reservas_col.find({"id_barbero": oid, "estado": "completado"})]
     except errors.InvalidId:
         raise HTTPException(status_code=400, detail="ID inválido")
 
-
+# -----------------------
+# FUNCIONES AUXILIARES
+# -----------------------
 def regenerar_disponibilidad():
     hoy = datetime.now().date()
     futuro = hoy + timedelta(days=7)
@@ -372,5 +356,6 @@ if __name__ == "__main__":
     import uvicorn
     PORT = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=PORT)
+
 
 
