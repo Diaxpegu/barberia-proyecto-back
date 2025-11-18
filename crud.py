@@ -1,7 +1,5 @@
 from bson import ObjectId, errors
 
-# Convertir documentos de MongoDB a JSON
-
 def to_json(document):
     """
     Convierte un documento de MongoDB a diccionario serializable a JSON.
@@ -18,24 +16,31 @@ def to_json(document):
     return result
 
 
-# Funciones CRUD básicas
-
-
 def get_by_id(collection, id):
-    """Obtiene un documento por su ObjectId"""
+    """
+    Obtiene un documento por su ObjectId.
+    Retorna None si el ID no es válido o no se encuentra.
+    """
     try:
         oid = ObjectId(id)
     except errors.InvalidId:
         return None
     return collection.find_one({"_id": oid})
 
+
 def insert_document(collection, data):
-    """Inserta un documento en la colección"""
+    """
+    Inserta un documento en la colección y retorna el ID insertado como string.
+    """
     result = collection.insert_one(data)
     return str(result.inserted_id)
 
+
 def update_document(collection, id, update_data):
-    """Actualiza un documento por su ObjectId"""
+    """
+    Actualiza un documento por su ObjectId.
+    Retorna el número de documentos modificados (0 o 1).
+    """
     try:
         oid = ObjectId(id)
     except errors.InvalidId:
@@ -43,8 +48,12 @@ def update_document(collection, id, update_data):
     result = collection.update_one({"_id": oid}, {"$set": update_data})
     return result.modified_count
 
+
 def delete_document(collection, id):
-    """Elimina un documento por su ObjectId"""
+    """
+    Elimina un documento por su ObjectId.
+    Retorna el número de documentos eliminados (0 o 1).
+    """
     try:
         oid = ObjectId(id)
     except errors.InvalidId:

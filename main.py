@@ -1,12 +1,12 @@
 from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
-from bson import ObjectId, errors
+from bson import ObjectId
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 from typing import Optional
 import os
 
-# Importar colecciones dinámicas desde database.py
+# Importar colecciones desde database.py
 from database import db, clientes_col, barberos_col, servicios_col, productos_col, reservas_col, disponibilidades_col, jefes_col, admin_col
 from crud import to_json, insert_document, update_document, delete_document
 from schemas import ClienteSchema, BarberoSchema, ServicioSchema, ProductoSchema, DisponibilidadSchema, ReservaSchema
@@ -33,9 +33,6 @@ app.add_middleware(
 # -----------------------
 @app.on_event("startup")
 def startup_event():
-    """
-    Se ejecuta al iniciar la API. Aquí arrancamos el scheduler.
-    """
     iniciar_scheduler()
 
 # -----------------------
@@ -59,7 +56,7 @@ class ReservaCreate(BaseModel):
     servicio_nombre: Optional[str] = None
 
 # -----------------------
-# RUTAS
+# RUTAS GENERALES
 # -----------------------
 @app.get("/")
 def root():
@@ -67,9 +64,6 @@ def root():
 
 @app.post("/login/")
 def login(datos_login: LoginSchema):
-    """
-    Login de barberos o jefes
-    """
     usuario = datos_login.usuario
     contrasena = datos_login.contrasena
 
@@ -83,6 +77,9 @@ def login(datos_login: LoginSchema):
 
     raise HTTPException(status_code=404, detail="Usuario o contraseña incorrectos")
 
+# -----------------------
+# CLIENTES
+# -----------------------
 @app.get("/clientes/")
 def listar_clientes():
     return [to_json(c) for c in clientes_col.find()]
@@ -94,43 +91,44 @@ def crear_cliente(cliente: ClienteSchema):
     cid = insert_document(clientes_col, cliente.dict())
     return {"mensaje": "Cliente creado correctamente", "id": str(cid)}
 
+@app.put("/clientes/{cliente_id}")
+def actualizar_cliente(cliente_id: str, data: dict = Body(...)):
+    modified = update_document(clientes_col, cliente_id, data)
+    if modified == 0:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado o sin cambios")
+    return {"mensaje": "Cliente actualizado correctamente"}
+
+@app.delete("/clientes/{cliente_id}")
+def eliminar_cliente(cliente_id: str):
+    deleted = delete_document(clientes_col, cliente_id)
+    if deleted == 0:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    return {"mensaje": "Cliente eliminado correctamente"}
+
+# -----------------------
+# BARBEROS
+# -----------------------
 @app.get("/barberos/")
 def listar_barberos():
-    barberos_lista = []
+    lista = []
     for b in barberos_col.find():
         data = to_json(b)
         data.pop("contrasena", None)
         data["especialidad"] = data.get("especialidad") or "No asignada"
         if isinstance(data.get("disponibilidades"), list):
             data["disponibilidades"] = f"{len(data['disponibilidades'])} horarios"
-        barberos_lista.append(data)
-    return barberos_lista
+        lista.append(data)
+    return lista
 
 @app.get("/barberos/{barbero_id}")
 def obtener_barbero(barbero_id: str):
-    try:
-        b = barberos_col.find_one({"_id": ObjectId(barbero_id)})
-    except Exception:
-        raise HTTPException(status_code=400, detail="ID inválido")
+    b = barberos_col.find_one({"_id": ObjectId(barbero_id)})
     if not b:
         raise HTTPException(status_code=404, detail="Barbero no encontrado")
     data = to_json(b)
     data.pop("contrasena", None)
     data["especialidad"] = data.get("especialidad") or "No asignada"
     return data
-
-@app.put("/barberos/{barbero_id}")
-def actualizar_barbero(barbero_id: str, data: dict = Body(...)):
-    try:
-        campos = {k: data[k] for k in ["nombre", "especialidad"] if k in data}
-        if not campos:
-            raise HTTPException(status_code=400, detail="Nada para actualizar")
-        res = barberos_col.update_one({"_id": ObjectId(barbero_id)}, {"$set": campos})
-        if res.modified_count == 0:
-            raise HTTPException(status_code=404, detail="Barbero no encontrado o sin cambios")
-        return {"mensaje": "Perfil actualizado correctamente"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/barberos/")
 def crear_barbero(barbero: BarberoSchema):
@@ -153,6 +151,50 @@ def crear_barbero(barbero: BarberoSchema):
     }
     bid = insert_document(barberos_col, nuevo)
     return {"mensaje": "Barbero creado correctamente", "id": str(bid)}
+
+@app.put("/barberos/{barbero_id}")
+def actualizar_barbero(barbero_id: str, data: dict = Body(...)):
+    campos = {k: data[k] for k in ["nombre", "especialidad"] if k in data}
+    if not campos:
+        raise HTTPException(status_code=400, detail="Nada para actualizar")
+    modified = update_document(barberos_col, barbero_id, campos)
+    if modified == 0:
+        raise HTTPException(status_code=404, detail="Barbero no encontrado o sin cambios")
+    return {"mensaje": "Perfil actualizado correctamente"}
+
+@app.delete("/barberos/{barbero_id}")
+def eliminar_barbero(barbero_id: str):
+    deleted = delete_document(barberos_col, barbero_id)
+    if deleted == 0:
+        raise HTTPException(status_code=404, detail="Barbero no encontrado")
+    return {"mensaje": "Barbero eliminado correctamente"}
+
+# -----------------------
+# RESERVAS
+# -----------------------
+@app.get("/reservas/")
+def listar_reservas():
+    return [to_json(r) for r in reservas_col.find()]
+
+@app.post("/reservas/")
+def crear_reserva(reserva: ReservaCreate):
+    data = reserva.dict()
+    rid = insert_document(reservas_col, data)
+    return {"mensaje": "Reserva creada correctamente", "id": rid}
+
+@app.put("/reservas/{reserva_id}")
+def actualizar_reserva(reserva_id: str, data: dict = Body(...)):
+    modified = update_document(reservas_col, reserva_id, data)
+    if modified == 0:
+        raise HTTPException(status_code=404, detail="Reserva no encontrada o sin cambios")
+    return {"mensaje": "Reserva actualizada correctamente"}
+
+@app.delete("/reservas/{reserva_id}")
+def eliminar_reserva(reserva_id: str):
+    deleted = delete_document(reservas_col, reserva_id)
+    if deleted == 0:
+        raise HTTPException(status_code=404, detail="Reserva no encontrada")
+    return {"mensaje": "Reserva eliminada correctamente"}
 
 # -----------------------
 # Función para regenerar disponibilidad semanal
