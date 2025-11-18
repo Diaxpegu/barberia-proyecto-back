@@ -170,6 +170,20 @@ def eliminar_barbero(barbero_id: str):
     return {"mensaje": "Barbero eliminado correctamente"}
 
 # -----------------------
+# DISPONIBILIDADES POR BARBERO
+# -----------------------
+@app.get("/barberos/{barbero_id}/disponibilidades")
+def obtener_disponibilidades(barbero_id: str):
+    barbero = barberos_col.find_one({"_id": ObjectId(barbero_id)})
+    if not barbero:
+        raise HTTPException(status_code=404, detail="Barbero no encontrado")
+    
+    # Obtener solo las disponibilidades
+    disponibilidades = barbero.get("disponibilidades", [])
+    return {"barbero_id": barbero_id, "nombre": barbero["nombre"], "disponibilidades": disponibilidades}
+
+
+# -----------------------
 # RESERVAS
 # -----------------------
 @app.get("/reservas/")
