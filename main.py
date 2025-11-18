@@ -113,12 +113,15 @@ def listar_barberos():
     lista = []
     for b in barberos_col.find():
         data = to_json(b)
-        data.pop("contrasena", None)
+        data.pop("contrasena", None)  # Quitar la contraseña
         data["especialidad"] = data.get("especialidad") or "No asignada"
-        if isinstance(data.get("disponibilidades"), list):
-            data["disponibilidades"] = f"{len(data['disponibilidades'])} horarios"
+        
+        # Asegurarse de que disponibilidades sea siempre lista
+        data["disponibilidades"] = data.get("disponibilidades", [])
+
         lista.append(data)
     return lista
+
 
 @app.get("/barberos/{barbero_id}")
 def obtener_barbero(barbero_id: str):
