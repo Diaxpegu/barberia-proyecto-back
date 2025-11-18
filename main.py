@@ -182,6 +182,60 @@ def obtener_disponibilidades(barbero_id: str):
     disponibilidades = barbero.get("disponibilidades", [])
     return {"barbero_id": barbero_id, "nombre": barbero["nombre"], "disponibilidades": disponibilidades}
 
+# -----------------------
+# SERVICIOS
+# -----------------------
+@app.get("/servicios/")
+def listar_servicios():
+    return [to_json(s) for s in servicios_col.find()]
+
+@app.post("/servicios/")
+def crear_servicio(servicio: ServicioSchema):
+    sid = insert_document(servicios_col, servicio.dict())
+    return {"mensaje": "Servicio creado correctamente", "id": sid}
+
+@app.put("/servicios/{servicio_id}")
+def actualizar_servicio(servicio_id: str, data: dict = Body(...)):
+    modified = update_document(servicios_col, servicio_id, data)
+    if modified == 0:
+        raise HTTPException(status_code=404, detail="Servicio no encontrado o sin cambios")
+    return {"mensaje": "Servicio actualizado correctamente"}
+
+@app.delete("/servicios/{servicio_id}")
+def eliminar_servicio(servicio_id: str):
+    deleted = delete_document(servicios_col, servicio_id)
+    if deleted == 0:
+        raise HTTPException(status_code=404, detail="Servicio no encontrado")
+    return {"mensaje": "Servicio eliminado correctamente"}
+
+
+# -----------------------
+# PRODUCTOS
+# -----------------------
+@app.get("/productos/")
+def listar_productos():
+    return [to_json(p) for p in productos_col.find()]
+
+@app.post("/productos/")
+def crear_producto(producto: ProductoSchema):
+    pid = insert_document(productos_col, producto.dict())
+    return {"mensaje": "Producto creado correctamente", "id": pid}
+
+@app.put("/productos/{producto_id}")
+def actualizar_producto(producto_id: str, data: dict = Body(...)):
+    modified = update_document(productos_col, producto_id, data)
+    if modified == 0:
+        raise HTTPException(status_code=404, detail="Producto no encontrado o sin cambios")
+    return {"mensaje": "Producto actualizado correctamente"}
+
+@app.delete("/productos/{producto_id}")
+def eliminar_producto(producto_id: str):
+    deleted = delete_document(productos_col, producto_id)
+    if deleted == 0:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+    return {"mensaje": "Producto eliminado correctamente"}
+
+
 
 # -----------------------
 # RESERVAS
