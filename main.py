@@ -110,7 +110,7 @@ def tarea_recordatorios():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("🚀 Iniciando sistema de recordatorios automáticos.")
-    scheduler.add_job(tarea_recordatorios, 'interval', minutes=60)
+    scheduler.add_job(tarea_recordatorios, 'interval', minutes=1)
     scheduler.start()
     yield 
     print("🛑 Deteniendo sistema de recordatorios.")
