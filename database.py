@@ -16,20 +16,31 @@ MONGO_DB = os.getenv("MONGO_DB", "test")
 try:
     client = MongoClient(MONGO_URL)
     db = client[MONGO_DB]
-    print("Conexión a MongoDB exitosa")
+    print("✅ Conexión a MongoDB exitosa")
 except Exception as e:
-    print("Error al conectar a MongoDB:", e)
+    print("⚠️ Error al conectar a MongoDB:", e)
     raise e
 
 # -----------------------
 # Colecciones
 # -----------------------
-clientes_col = db["clientes"]
-barberos_col = db["barberos"]
-servicios_col = db["servicios"]
-productos_col = db["productos"]
-reservas_col = db["reservas"]
-jefes_col = db["jefes"]
-admin_col = db["admin"]
+colecciones = [
+    "clientes",
+    "barberos",
+    "servicios",
+    "productos",
+    "reservas",
+    "disponibilidades",
+    "notificaciones",
+    "jefes",
+    "admin"
+]
+
+# Crear variables dinámicas para cada colección
+for col_name in colecciones:
+    globals()[f"{col_name}_col"] = db[col_name]
+
+print("📂 Colecciones disponibles:", ", ".join(colecciones))
+
 
 
