@@ -16,6 +16,9 @@ from schemas import (
     DisponibilidadSchema, ReservaSchema
 )
 
+# ⭐ IMPORTANTE → Importar el scheduler
+from scheduler import iniciar_scheduler
+
 app = FastAPI(title="API Barbería", version="1.9.0")
 
 origins = [
@@ -31,6 +34,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# --------------------------------------------------------
+# INICIO DEL PROYECTO (EVENTO STARTUP)
+# --------------------------------------------------------
+@app.on_event("startup")
+def startup_event():
+    """
+    Este evento se ejecuta cuando tu API se inicia.
+    Aquí arrancamos el scheduler que enviará correos automáticamente.
+    """
+    iniciar_scheduler()
+
+
+# --------------------------------------------------------
+# Resto de tu código tal cual estaba
+# --------------------------------------------------------
 
 class LoginSchema(BaseModel):
     usuario: str
@@ -320,3 +339,4 @@ if __name__ == "__main__":
     import uvicorn
     PORT = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=PORT)
+
