@@ -6,10 +6,10 @@ from pydantic import BaseModel
 from typing import Optional
 import os
 import smtplib
-import atexit
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from apscheduler.schedulers.background import BackgroundScheduler
+from contextlib import asynccontextmanager # Nuevo import
 
 # Importaciones locales
 from database import (
@@ -22,12 +22,16 @@ from schemas import (
     DisponibilidadSchema, ReservaSchema
 )
 
-# CONFIGURACIÓN DE EMAIL (GMAIL SMTP)
+# CONFIGURACIÓN DE EMAIL
 
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
-SENDER_EMAIL = "barberiavalaint@gmail.com"  
+SENDER_EMAIL = "barberiavalaint@gmail.com"
 SENDER_PASSWORD = "kijs kjzj vpdn fayj" 
+
+# INICIALIZACIÓN DE SCHEDULER 
+
+scheduler = BackgroundScheduler()
 
 # LÓGICA DE ENVÍO DE CORREOS Y TAREAS
 def enviar_correo_simple(destinatario, asunto, mensaje_html):
@@ -41,7 +45,7 @@ def enviar_correo_simple(destinatario, asunto, mensaje_html):
 
     try:
         server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
-        server.starttls()  # Seguridad TLS
+        server.starttls()
         server.login(SENDER_EMAIL, SENDER_PASSWORD)
         server.send_message(msg)
         server.quit()
@@ -95,23 +99,26 @@ def tarea_recordatorios():
             
             # Enviar
             if enviar_correo_simple(cliente["correo"], asunto, cuerpo):
-                # Marcar como enviada para no repetir
                 reservas_col.update_one(
                     {"_id": reserva["_id"]},
                     {"$set": {"notificacion_enviada": True}}
                 )
 
-# INICIALIZACIÓN 
-app = FastAPI(title="API Barbería", version="1.9.0")
 
-# Inicializar el Scheduler
-@app.on_event("startup")
-def start_scheduler():
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(tarea_recordatorios, 'interval', minutes=60) # Revisa cada hora
+# LIFESPAN 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("🚀 Iniciando sistema de recordatorios automáticos.")
+    scheduler.add_job(tarea_recordatorios, 'interval', minutes=60)
     scheduler.start()
-    atexit.register(lambda: scheduler.shutdown())
-    print("🚀 Sistema de recordatorios automáticos iniciado.")
+    yield 
+    print("🛑 Deteniendo sistema de recordatorios.")
+    scheduler.shutdown()
+
+# INICIALIZACIÓN DE LA APP (con lifespan)
+
+app = FastAPI(title="API Barbería", version="1.9.0", lifespan=lifespan)
 
 origins = [
     "https://barberia-proyecto-front-production-3f2e.up.railway.app",
