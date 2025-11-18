@@ -25,7 +25,7 @@ from schemas import (
 # CONFIGURACIÓN DE EMAIL
 
 SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 587
+SMTP_PORT = 465
 SENDER_EMAIL = "barberiavalaint@gmail.com"
 SENDER_PASSWORD = "kijs kjzj vpdn fayj" 
 
@@ -34,8 +34,14 @@ SENDER_PASSWORD = "kijs kjzj vpdn fayj"
 scheduler = BackgroundScheduler()
 
 # LÓGICA DE ENVÍO DE CORREOS Y TAREAS
+SMTP_SERVER = "smtp.gmail.com"
+SMTP_PORT = 465 
+SENDER_EMAIL = "barberiavalaint@gmail.com" 
+SENDER_PASSWORD = "kijs kjzj vpdn fayj"    
+
+
 def enviar_correo_simple(destinatario, asunto, mensaje_html):
-    """Envía un correo usando Gmail SMTP"""
+    """Envía un correo usando Gmail SMTP con SMTP_SSL (Puerto 465)"""
     msg = MIMEMultipart()
     msg['From'] = SENDER_EMAIL
     msg['To'] = destinatario
@@ -44,15 +50,14 @@ def enviar_correo_simple(destinatario, asunto, mensaje_html):
     msg.attach(MIMEText(mensaje_html, 'html'))
 
     try:
-        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
-        server.starttls()
+        server = smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) 
         server.login(SENDER_EMAIL, SENDER_PASSWORD)
         server.send_message(msg)
         server.quit()
         print(f"📧 Correo enviado a {destinatario}")
         return True
     except Exception as e:
-        print(f"❌ Error enviando correo: {e}")
+        print(f"❌ Error enviando correo: {e}") 
         return False
 
 def tarea_recordatorios():
