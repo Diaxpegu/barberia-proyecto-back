@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
-from bson import ObjectId
+from bson import ObjectId, errors
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 from typing import Optional
@@ -182,6 +182,16 @@ def obtener_disponibilidades(barbero_id: str):
     disponibilidades = barbero.get("disponibilidades", [])
     return {"barbero_id": barbero_id, "nombre": barbero["nombre"], "disponibilidades": disponibilidades}
 
+@app.put("/disponibilidad/bloquear/{barbero_id}/{fecha}/{hora}")
+def bloquear_disponibilidad(barbero_id: str, fecha: str, hora: str):
+    r = barberos_col.update_one(
+        {"_id": ObjectId(barbero_id), "disponibilidades": {"$elemMatch": {"fecha": fecha, "hora": hora}}},
+        {"$set": {"disponibilidades.$.estado": "ocupado"}}
+    )
+    if r.modified_count == 0:
+        raise HTTPException(status_code=404, detail="No se encontró esa hora disponible")
+    return {"mensaje": "Horario bloqueado correctamente"}
+
 # -----------------------
 # SERVICIOS
 # -----------------------
@@ -240,33 +250,103 @@ def eliminar_producto(producto_id: str):
 # -----------------------
 # RESERVAS
 # -----------------------
-@app.get("/reservas/")
+@app.get("/reservas/pendientes")
 def listar_reservas():
-    return [to_json(r) for r in reservas_col.find()]
+    return [to_json(r) for r in reservas_col.find({"estado": "pendiente"})]
 
 @app.post("/reservas/")
 def crear_reserva(reserva: ReservaCreate):
-    data = reserva.dict()
-    rid = insert_document(reservas_col, data)
-    return {"mensaje": "Reserva creada correctamente", "id": rid}
+    try:
+        barbero_oid = ObjectId(reserva.id_barbero)
+        fecha_str = str(reserva.fecha)
+        cliente_oid = None
 
-@app.put("/reservas/{reserva_id}")
+        if reserva.id_cliente and reserva.id_cliente.strip() != "":
+            try:
+                cliente_oid = ObjectId(reserva.id_cliente)
+            except Exception:
+                cliente_oid = None
+
+        if not cliente_oid:
+            if not reserva.nombre_cliente or not reserva.email_cliente or not reserva.telefono_cliente:
+                raise HTTPException(status_code=400, detail="Faltan datos del cliente")
+            cliente_doc = {
+                "nombre": f"{reserva.nombre_cliente.strip()} {reserva.apellido_cliente.strip() if reserva.apellido_cliente else ''}".strip(),
+                "correo": reserva.email_cliente.strip(),
+                "telefono": reserva.telefono_cliente.strip(),
+                "direccion": None
+            }
+            existente = clientes_col.find_one({"correo": cliente_doc["correo"]})
+            if existente:
+                cliente_oid = existente["_id"]
+            else:
+                cliente_oid = insert_document(clientes_col, cliente_doc)
+
+        servicio_oid = None
+        if reserva.id_servicio and reserva.id_servicio.strip() != "":
+            try:
+                servicio_oid = ObjectId(reserva.id_servicio)
+            except Exception:
+                servicio_oid = None
+
+        doc_reserva = {
+            "id_barbero": barbero_oid,
+            "id_cliente": cliente_oid,
+            "id_servicio": servicio_oid,
+            "servicio_nombre": reserva.servicio_nombre,
+            "fecha": fecha_str,
+            "hora": reserva.hora,
+            "estado": "pendiente"
+        }
+        rid = insert_document(reservas_col, doc_reserva)
+
+        barberos_col.update_one(
+            {"_id": barbero_oid, "disponibilidades": {"$elemMatch": {"fecha": fecha_str, "hora": reserva.hora}}},
+            {"$set": {"disponibilidades.$.estado": "pendiente"}}
+        )
+
+        return {"mensaje": "Reserva creada correctamente (pendiente de confirmación)", "id_reserva": str(rid)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+
+
+@app.put("/reservas/actualizar/{reserva_id}")
 def actualizar_reserva(reserva_id: str, data: dict = Body(...)):
     modified = update_document(reservas_col, reserva_id, data)
     if modified == 0:
         raise HTTPException(status_code=404, detail="Reserva no encontrada o sin cambios")
     return {"mensaje": "Reserva actualizada correctamente"}
 
-@app.delete("/reservas/{reserva_id}")
+@app.delete("/reservas/cancelar/{reserva_id}")
 def eliminar_reserva(reserva_id: str):
     deleted = delete_document(reservas_col, reserva_id)
     if deleted == 0:
         raise HTTPException(status_code=404, detail="Reserva no encontrada")
     return {"mensaje": "Reserva eliminada correctamente"}
 
-# -----------------------
-# Función para regenerar disponibilidad semanal
-# -----------------------
+@app.get("/barbero/agenda/{barbero_id}")
+def get_agenda_barbero(barbero_id: str):
+    try:
+        oid = ObjectId(barbero_id)
+        reservas = list(reservas_col.aggregate([
+            {"$match": {"id_barbero": oid, "estado": {"$in": ["pendiente", "confirmado", "agendado"]}}},
+            {"$lookup": {"from": "clientes", "localField": "id_cliente", "foreignField": "_id", "as": "cliente"}},
+            {"$lookup": {"from": "servicios", "localField": "id_servicio", "foreignField": "_id", "as": "servicio"}},
+        ]))
+        return [to_json(r) for r in reservas]
+    except errors.InvalidId:
+        raise HTTPException(status_code=400, detail="ID inválido")
+
+@app.get("/barbero/historial/{barbero_id}")
+def get_historial_barbero(barbero_id: str):
+    try:
+        oid = ObjectId(barbero_id)
+        query = {"id_barbero": oid, "estado": "completado"}
+        return [to_json(cita) for cita in reservas_col.find(query)]
+    except errors.InvalidId:
+        raise HTTPException(status_code=400, detail="ID inválido")
+
+
 def regenerar_disponibilidad():
     hoy = datetime.now().date()
     futuro = hoy + timedelta(days=7)
