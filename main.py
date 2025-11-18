@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from bson import ObjectId, errors
 from datetime import datetime, timedelta, date
 from pydantic import BaseModel
-from typing import Optional, List # Asegurar List está importado
+from typing import Optional, List
 import os
 import smtplib
 from email.mime.text import MIMEText
@@ -11,7 +11,7 @@ from email.mime.multipart import MIMEMultipart
 from apscheduler.schedulers.background import BackgroundScheduler
 from contextlib import asynccontextmanager
 
-# Importaciones locales (Asegúrate de que estos archivos estén presentes)
+# Importaciones locales
 from database import (
     clientes_col, barberos_col, servicios_col, productos_col,
     reservas_col, disponibilidades_col, jefes_col
@@ -22,21 +22,20 @@ from schemas import (
     DisponibilidadSchema, ReservaSchema
 )
 
-# CONFIGURACIÓN DE EMAIL 
+# CONFIGURACIÓN DE EMAIL (GMAIL SMTP) - INTENTO FINAL 587 + TIMEOUT
 SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 465 
+SMTP_PORT = 587
 SENDER_EMAIL = "barberiavalaint@gmail.com" 
 SENDER_PASSWORD = "kijs kjzj vpdn fayj" 
 
 
 # INICIALIZACIÓN DE SCHEDULER (Objeto global)
-
 scheduler = BackgroundScheduler()
 
-# LÓGICA DE ENVÍO DE CORREOS Y TAREAS
 
+# LÓGICA DE ENVÍO DE CORREOS Y TAREAS
 def enviar_correo_simple(destinatario, asunto, mensaje_html):
-    """Envía un correo usando Gmail SMTP con SMTP_SSL (Puerto 465)"""
+    """Envía un correo usando SMTP estándar con STARTTLS y Timeout"""
     msg = MIMEMultipart()
     msg['From'] = SENDER_EMAIL
     msg['To'] = destinatario
@@ -45,19 +44,19 @@ def enviar_correo_simple(destinatario, asunto, mensaje_html):
     msg.attach(MIMEText(mensaje_html, 'html'))
 
     try:
-        # CAMBIO CRÍTICO: Añadir timeout=10 para evitar que el job se cuelgue
-        server = smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, timeout=10) 
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=10) 
+        server.starttls()
         server.login(SENDER_EMAIL, SENDER_PASSWORD)
         server.send_message(msg)
         server.quit()
         print(f"📧 Correo enviado a {destinatario}")
         return True
     except Exception as e:
-        print(f"❌ Error enviando correo (con timeout): {e}") 
+        print(f"❌ Error enviando correo (con timeout, 587): {e}") 
         return False
 
 def tarea_recordatorios():
-    """Busca reservas para HOY (para prueba rápida) y envía recordatorios"""
+    """Busca reservas para HOY (prueba rápida) y envía recordatorios"""
     print("🔄 Comprobando recordatorios de citas...")
     
     # LÓGICA TEMPORAL PARA PRUEBA RÁPIDA (BUSCA RESERVAS DE HOY)
@@ -81,7 +80,7 @@ def tarea_recordatorios():
             servicio = reserva.get("servicio_nombre", "Servicio de Barbería")
             
             # Crear mensaje
-            asunto = "⏰ Recordatorio: Tu cita en VALIANT Barbería es mañana" 
+            asunto = "⏰ Recordatorio: Tu cita en VALIANT Barbería es mañana"
             cuerpo = f"""
             <div style="font-family: Arial, sans-serif; color: #333;">
                 <h2 style="color: #d4af37;">Hola {nombre},</h2>
@@ -106,16 +105,15 @@ def tarea_recordatorios():
                 )
 
 
-# LIFESPAN
-
+# LIFESPAN (Manejo de inicio/apagado seguro de background tasks)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Lógica de Startup: Inicia el scheduler
     print("🚀 Iniciando sistema de recordatorios automáticos.")
     # INTERVALO DE 1 MINUTO PARA PRUEBA RÁPIDA (CAMBIAR A 60 DESPUÉS DE LA PRUEBA)
     scheduler.add_job(tarea_recordatorios, 'interval', minutes=1)
     scheduler.start()
-    yield # La aplicación continúa ejecutándose
-    # Lógica de Shutdown: Detiene el scheduler
+    yield
     print("🛑 Deteniendo sistema de recordatorios.")
     scheduler.shutdown()
 
@@ -137,6 +135,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # SCHEMAS Y RUTAS EXISTENTES
 
@@ -336,7 +335,7 @@ def crear_reserva(reserva: ReservaCreate):
             "fecha": fecha_str,
             "hora": reserva.hora,
             "estado": "pendiente",
-            "notificacion_enviada": False 
+            "notificacion_enviada": False  # Nuevo campo
         }
         rid = insert_document(reservas_col, doc_reserva)
 
