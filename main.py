@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import FastAPI, HTTPException, Body, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from bson import ObjectId, errors
 from datetime import datetime, timedelta
@@ -6,21 +6,31 @@ from pydantic import BaseModel
 from typing import Optional
 import os
 
-# Colecciones
-from database import db, clientes_col, barberos_col, servicios_col, productos_col, reservas_col, jefes_col
+# SQL Imports
+from sqlalchemy.orm import Session
+from database import (
+    db, clientes_col, barberos_col, servicios_col, productos_col, reservas_col, 
+    get_db_sql, UsuarioSQL
+)
 from crud import to_json, insert_document, update_document, delete_document
 
 # Scheduler
 from scheduler import iniciar_scheduler
+# Schemas
+from schemas import BarberoSchema
 
-app = FastAPI(title="API Barbería", version="1.9.0")
+app = FastAPI(title="API Barbería Híbrida", version="2.0.0")
 
 # -----------------------
-# CORS
+# CORS (Permisos de acceso)
 # -----------------------
 origins = [
+    # Producción Frontend
     "https://barberia-proyecto-front-production-3f2e.up.railway.app",
-    "https://barberia-proyecto-back-production-f876.up.railway.app"
+    # Producción Backend (por si acaso)
+    "https://barberia-proyecto-back-production-f876.up.railway.app",
+    # Desarrollo Local (Esto permite probar desde tu PC sin subir cambios, no guarda datos en tu PC)
+    "http://localhost:3000"
 ]
 
 app.add_middleware(
@@ -39,7 +49,7 @@ def startup_event():
     iniciar_scheduler()
 
 # -----------------------
-# MODELOS
+# MODELOS DE DATOS (Pydantic)
 # -----------------------
 class LoginSchema(BaseModel):
     usuario: str
@@ -63,33 +73,58 @@ class ReservaCreate(BaseModel):
 # -----------------------
 @app.get("/")
 def root():
-    return {"mensaje": f"API conectada correctamente a MongoDB (BD {db.name})"}
+    return {"mensaje": "API Híbrida Funcionando (Mongo + MySQL Railway)"}
 
+# ==========================================
+# LOGIN (AHORA USA MYSQL)
+# ==========================================
 @app.post("/login/")
-def login(datos_login: LoginSchema):
-    usuario, contrasena = datos_login.usuario, datos_login.contrasena
-    barbero = barberos_col.find_one({"usuario": usuario})
-    if barbero and barbero.get("contrasena") == contrasena:
-        return {"usuario": barbero["usuario"], "rol": "barbero", "_id": str(barbero["_id"])}
+def login(datos_login: LoginSchema, db_sql: Session = Depends(get_db_sql)):
+    # 1. Buscamos usuario en la tabla SQL
+    usuario_encontrado = db_sql.query(UsuarioSQL).filter(UsuarioSQL.usuario == datos_login.usuario).first()
     
-    jefe = jefes_col.find_one({"usuario": usuario})
-    if jefe and jefe.get("contrasena") == contrasena:
-        return {"usuario": jefe["usuario"], "rol": "jefe", "_id": str(jefe["_id"])}
+    if not usuario_encontrado:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    # 2. Verificamos contraseña
+    if usuario_encontrado.contrasena != datos_login.contrasena:
+        raise HTTPException(status_code=401, detail="Contraseña incorrecta")
 
-    raise HTTPException(status_code=404, detail="Usuario o contraseña incorrectos")
+    # 3. Retornamos datos y el ID DE MONGO para que el Front siga igual
+    return {
+        "usuario": usuario_encontrado.usuario,
+        "rol": usuario_encontrado.rol,
+        "_id": usuario_encontrado.mongo_id 
+    }
+
+# Endpoint para crear el primer ADMIN (Ejecutar una vez desde Postman/Docs)
+@app.post("/crear-admin-inicial/")
+def crear_admin_inicial(usuario: str, contrasena: str, db_sql: Session = Depends(get_db_sql)):
+    if db_sql.query(UsuarioSQL).filter(UsuarioSQL.usuario == usuario).first():
+        return {"mensaje": "El usuario ya existe"}
+    
+    admin = UsuarioSQL(
+        usuario=usuario,
+        contrasena=contrasena,
+        rol="jefe",
+        mongo_id="admin_sys_id" # ID referencia
+    )
+    db_sql.add(admin)
+    db_sql.commit()
+    return {"mensaje": "Admin creado en MySQL correctamente"}
 
 # -----------------------
-# CLIENTES
+# CLIENTES (Mongo)
 # -----------------------
 @app.get("/clientes/")
 def listar_clientes():
     return [to_json(c) for c in clientes_col.find()]
 
 @app.post("/clientes/")
-def crear_cliente(cliente):
-    if clientes_col.find_one({"correo": cliente.correo}):
+def crear_cliente(cliente: dict = Body(...)):
+    if clientes_col.find_one({"correo": cliente.get("correo")}):
         raise HTTPException(status_code=400, detail="El cliente ya existe")
-    cid = insert_document(clientes_col, cliente.dict())
+    cid = insert_document(clientes_col, cliente)
     return {"mensaje": "Cliente creado correctamente", "id": str(cid)}
 
 @app.put("/clientes/{cliente_id}")
@@ -107,14 +142,15 @@ def eliminar_cliente(cliente_id: str):
     return {"mensaje": "Cliente eliminado correctamente"}
 
 # -----------------------
-# BARBEROS
+# BARBEROS (HÍBRIDO: SQL + MONGO)
 # -----------------------
 @app.get("/barberos/")
 def listar_barberos():
+    # Leemos de Mongo (Perfil público)
     lista = []
     for b in barberos_col.find():
         data = to_json(b)
-        data.pop("contrasena", None)
+        data.pop("contrasena", None) 
         data["especialidad"] = data.get("especialidad") or "No asignada"
         data["disponibilidades"] = data.get("disponibilidades", [])
         lista.append(data)
@@ -132,26 +168,43 @@ def obtener_barbero(barbero_id: str):
     return data
 
 @app.post("/barberos/")
-def crear_barbero(barbero):
-    if barberos_col.find_one({"usuario": barbero.usuario}):
-        raise HTTPException(status_code=400, detail="El usuario ya existe")
+def crear_barbero(barbero: BarberoSchema, db_sql: Session = Depends(get_db_sql)):
+    # 1. Validar en MySQL (usuario único)
+    existe = db_sql.query(UsuarioSQL).filter(UsuarioSQL.usuario == barbero.usuario).first()
+    if existe:
+        raise HTTPException(status_code=400, detail="El nombre de usuario ya existe (SQL)")
+
+    # 2. Insertar Perfil en MongoDB
     hoy = datetime.now().date()
     disponibilidades = [
         {"fecha": (hoy + timedelta(days=i)).isoformat(), "hora": h, "estado": "disponible"}
         for i in range(7) for h in ["08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00"]
     ]
-    nuevo = {
+    
+    nuevo_perfil_mongo = {
         "nombre": barbero.nombre,
         "usuario": barbero.usuario,
-        "contrasena": barbero.contrasena,
         "especialidad": barbero.especialidad or "No asignada",
         "disponibilidades": disponibilidades
     }
-    bid = insert_document(barberos_col, nuevo)
-    return {"mensaje": "Barbero creado correctamente", "id": str(bid)}
+    
+    bid = insert_document(barberos_col, nuevo_perfil_mongo)
+
+    # 3. Insertar Credenciales en MySQL
+    nuevo_usuario_sql = UsuarioSQL(
+        usuario=barbero.usuario,
+        contrasena=barbero.contrasena,
+        rol="barbero",
+        mongo_id=str(bid) 
+    )
+    db_sql.add(nuevo_usuario_sql)
+    db_sql.commit()
+
+    return {"mensaje": "Barbero creado correctamente en ambas BD", "id": str(bid)}
 
 @app.put("/barberos/{barbero_id}")
 def actualizar_barbero(barbero_id: str, data: dict = Body(...)):
+    # Actualiza solo perfil en Mongo
     campos = {k: data[k] for k in ["nombre", "especialidad"] if k in data}
     if not campos:
         raise HTTPException(status_code=400, detail="Nada para actualizar")
@@ -161,13 +214,21 @@ def actualizar_barbero(barbero_id: str, data: dict = Body(...)):
     return {"mensaje": "Perfil actualizado correctamente"}
 
 @app.delete("/barberos/{barbero_id}")
-def eliminar_barbero(barbero_id: str):
+def eliminar_barbero(barbero_id: str, db_sql: Session = Depends(get_db_sql)):
+    # 1. Eliminar de Mongo
     deleted = delete_document(barberos_col, barbero_id)
     if deleted == 0:
-        raise HTTPException(status_code=404, detail="Barbero no encontrado")
-    return {"mensaje": "Barbero eliminado correctamente"}
+        raise HTTPException(status_code=404, detail="Barbero no encontrado en Mongo")
 
-# Disponibilidades
+    # 2. Eliminar de MySQL (Usando la referencia mongo_id)
+    usuario_sql = db_sql.query(UsuarioSQL).filter(UsuarioSQL.mongo_id == barbero_id).first()
+    if usuario_sql:
+        db_sql.delete(usuario_sql)
+        db_sql.commit()
+
+    return {"mensaje": "Barbero eliminado de ambas BD correctamente"}
+
+# Disponibilidades (Mongo)
 @app.get("/barberos/{barbero_id}/disponibilidades")
 def obtener_disponibilidades(barbero_id: str):
     barbero = barberos_col.find_one({"_id": ObjectId(barbero_id)})
@@ -186,15 +247,15 @@ def bloquear_disponibilidad(barbero_id: str, fecha: str, hora: str):
     return {"mensaje": "Horario bloqueado correctamente"}
 
 # -----------------------
-# SERVICIOS
+# SERVICIOS (Mongo)
 # -----------------------
 @app.get("/servicios/")
 def listar_servicios():
     return [to_json(s) for s in servicios_col.find()]
 
 @app.post("/servicios/")
-def crear_servicio(servicio):
-    sid = insert_document(servicios_col, servicio.dict())
+def crear_servicio(servicio: dict = Body(...)):
+    sid = insert_document(servicios_col, servicio)
     return {"mensaje": "Servicio creado correctamente", "id": sid}
 
 @app.put("/servicios/{servicio_id}")
@@ -212,15 +273,15 @@ def eliminar_servicio(servicio_id: str):
     return {"mensaje": "Servicio eliminado correctamente"}
 
 # -----------------------
-# PRODUCTOS
+# PRODUCTOS (Mongo)
 # -----------------------
 @app.get("/productos/")
 def listar_productos():
     return [to_json(p) for p in productos_col.find()]
 
 @app.post("/productos/")
-def crear_producto(producto):
-    pid = insert_document(productos_col, producto.dict())
+def crear_producto(producto: dict = Body(...)):
+    pid = insert_document(productos_col, producto)
     return {"mensaje": "Producto creado correctamente", "id": pid}
 
 @app.put("/productos/{producto_id}")
@@ -238,11 +299,16 @@ def eliminar_producto(producto_id: str):
     return {"mensaje": "Producto eliminado correctamente"}
 
 # -----------------------
-# RESERVAS
+# RESERVAS (Mongo)
 # -----------------------
-@app.get("/reservas/pendientes")
-def listar_reservas():
-    return [to_json(r) for r in reservas_col.find({"estado": "pendiente"})]
+@app.get("/reservas/detalle/")
+def listar_reservas_detalle():
+    reservas = list(reservas_col.aggregate([
+        {"$lookup": {"from": "clientes", "localField": "id_cliente", "foreignField": "_id", "as": "cliente"}},
+        {"$lookup": {"from": "servicios", "localField": "id_servicio", "foreignField": "_id", "as": "servicio"}},
+        {"$lookup": {"from": "barberos", "localField": "id_barbero", "foreignField": "_id", "as": "barbero"}}
+    ]))
+    return [to_json(r) for r in reservas]
 
 @app.post("/reservas/")
 def crear_reserva(reserva: ReservaCreate):
@@ -292,7 +358,7 @@ def crear_reserva(reserva: ReservaCreate):
             {"$set": {"disponibilidades.$.estado": "pendiente"}}
         )
 
-        return {"mensaje": "Reserva creada correctamente (pendiente de confirmación)", "id_reserva": str(rid)}
+        return {"mensaje": "Reserva creada correctamente", "id_reserva": str(rid)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
@@ -327,7 +393,12 @@ def get_agenda_barbero(barbero_id: str):
 def get_historial_barbero(barbero_id: str):
     try:
         oid = ObjectId(barbero_id)
-        return [to_json(cita) for cita in reservas_col.find({"id_barbero": oid, "estado": "completado"})]
+        reservas = list(reservas_col.aggregate([
+            {"$match": {"id_barbero": oid, "estado": "completado"}},
+            {"$lookup": {"from": "clientes", "localField": "id_cliente", "foreignField": "_id", "as": "cliente"}},
+            {"$lookup": {"from": "servicios", "localField": "id_servicio", "foreignField": "_id", "as": "servicio"}},
+        ]))
+        return [to_json(r) for r in reservas]
     except errors.InvalidId:
         raise HTTPException(status_code=400, detail="ID inválido")
 
@@ -335,18 +406,22 @@ def get_historial_barbero(barbero_id: str):
 # FUNCIONES AUXILIARES
 # -----------------------
 def regenerar_disponibilidad():
-    hoy = datetime.now().date()
-    futuro = hoy + timedelta(days=7)
-    for barbero in barberos_col.find():
-        fechas_existentes = [d["fecha"] for d in barbero.get("disponibilidades", [])]
-        nuevas = []
-        for i in range(7):
-            fecha = (futuro + timedelta(days=i)).isoformat()
-            if fecha not in fechas_existentes:
-                for hora in ["08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00"]:
-                    nuevas.append({"fecha": fecha, "hora": hora, "estado": "disponible"})
-        if nuevas:
-            barberos_col.update_one({"_id": barbero["_id"]}, {"$push": {"disponibilidades": {"$each": nuevas}}})
+    try:
+        hoy = datetime.now().date()
+        futuro = hoy + timedelta(days=7)
+        if barberos_col is not None:
+            for barbero in barberos_col.find():
+                fechas_existentes = [d["fecha"] for d in barbero.get("disponibilidades", [])]
+                nuevas = []
+                for i in range(7):
+                    fecha = (futuro + timedelta(days=i)).isoformat()
+                    if fecha not in fechas_existentes:
+                        for hora in ["08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00"]:
+                            nuevas.append({"fecha": fecha, "hora": hora, "estado": "disponible"})
+                if nuevas:
+                    barberos_col.update_one({"_id": barbero["_id"]}, {"$push": {"disponibilidades": {"$each": nuevas}}})
+    except Exception as e:
+        print(f"Error regenerando disponibilidad: {e}")
 
 # -----------------------
 # RUN SERVER
@@ -356,6 +431,3 @@ if __name__ == "__main__":
     import uvicorn
     PORT = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=PORT)
-
-
-
