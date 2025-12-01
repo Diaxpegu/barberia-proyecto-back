@@ -10,7 +10,7 @@ import os
 from sqlalchemy.orm import Session
 from database import (
     db, clientes_col, barberos_col, servicios_col, productos_col, reservas_col, 
-    get_db_sql, UsuarioSQL
+    get_db_sql, UsuarioSQL, ClienteSQL  # <--- Agregado ClienteSQL
 )
 from crud import to_json, insert_document, update_document, delete_document
 
@@ -25,11 +25,8 @@ app = FastAPI(title="API Barbería Híbrida", version="2.0.0")
 # CORS (Permisos de acceso)
 # -----------------------
 origins = [
-    # Producción Frontend
     "https://barberia-proyecto-front-production-3f2e.up.railway.app",
-    # Producción Backend (por si acaso)
     "https://barberia-proyecto-back-production-f876.up.railway.app",
-    # Desarrollo Local
     "http://localhost:3000"
 ]
 
@@ -125,7 +122,6 @@ def crear_cliente(cliente: dict = Body(...)):
     if clientes_col.find_one({"correo": cliente.get("correo")}):
         raise HTTPException(status_code=400, detail="El cliente ya existe")
     
-    # Aseguramos estado por defecto
     if "estado" not in cliente:
         cliente["estado"] = "nuevo"
 
@@ -151,7 +147,6 @@ def eliminar_cliente(cliente_id: str):
 # -----------------------
 @app.get("/barberos/")
 def listar_barberos():
-    # Leemos de Mongo (Perfil público)
     lista = []
     for b in barberos_col.find():
         data = to_json(b)
@@ -174,12 +169,10 @@ def obtener_barbero(barbero_id: str):
 
 @app.post("/barberos/")
 def crear_barbero(barbero: BarberoSchema, db_sql: Session = Depends(get_db_sql)):
-    # 1. Validar en MySQL (usuario único)
     existe = db_sql.query(UsuarioSQL).filter(UsuarioSQL.usuario == barbero.usuario).first()
     if existe:
         raise HTTPException(status_code=400, detail="El nombre de usuario ya existe (SQL)")
 
-    # 2. Insertar Perfil en MongoDB
     hoy = datetime.now().date()
     disponibilidades = [
         {"fecha": (hoy + timedelta(days=i)).isoformat(), "hora": h, "estado": "disponible"}
@@ -195,7 +188,6 @@ def crear_barbero(barbero: BarberoSchema, db_sql: Session = Depends(get_db_sql))
     
     bid = insert_document(barberos_col, nuevo_perfil_mongo)
 
-    # 3. Insertar Credenciales en MySQL
     nuevo_usuario_sql = UsuarioSQL(
         usuario=barbero.usuario,
         contrasena=barbero.contrasena,
@@ -209,7 +201,6 @@ def crear_barbero(barbero: BarberoSchema, db_sql: Session = Depends(get_db_sql))
 
 @app.put("/barberos/{barbero_id}")
 def actualizar_barbero(barbero_id: str, data: dict = Body(...)):
-    # Actualiza solo perfil en Mongo
     campos = {k: data[k] for k in ["nombre", "especialidad"] if k in data}
     if not campos:
         raise HTTPException(status_code=400, detail="Nada para actualizar")
@@ -220,12 +211,10 @@ def actualizar_barbero(barbero_id: str, data: dict = Body(...)):
 
 @app.delete("/barberos/{barbero_id}")
 def eliminar_barbero(barbero_id: str, db_sql: Session = Depends(get_db_sql)):
-    # 1. Eliminar de Mongo
     deleted = delete_document(barberos_col, barbero_id)
     if deleted == 0:
         raise HTTPException(status_code=404, detail="Barbero no encontrado en Mongo")
 
-    # 2. Eliminar de MySQL (Usando la referencia mongo_id)
     usuario_sql = db_sql.query(UsuarioSQL).filter(UsuarioSQL.mongo_id == barbero_id).first()
     if usuario_sql:
         db_sql.delete(usuario_sql)
@@ -304,7 +293,7 @@ def eliminar_producto(producto_id: str):
     return {"mensaje": "Producto eliminado correctamente"}
 
 # -----------------------
-# RESERVAS (Mongo)
+# RESERVAS (Mongo + SQL Sync)
 # -----------------------
 @app.get("/reservas/detalle/")
 def listar_reservas_detalle():
@@ -316,7 +305,7 @@ def listar_reservas_detalle():
     return [to_json(r) for r in reservas]
 
 @app.post("/reservas/")
-def crear_reserva(reserva: ReservaCreate):
+def crear_reserva(reserva: ReservaCreate, db_sql: Session = Depends(get_db_sql)):
     try:
         barbero_oid = ObjectId(reserva.id_barbero)
         fecha_str = str(reserva.fecha)
@@ -331,12 +320,14 @@ def crear_reserva(reserva: ReservaCreate):
         if not cliente_oid:
             if not (reserva.nombre_cliente and reserva.email_cliente and reserva.telefono_cliente):
                 raise HTTPException(status_code=400, detail="Faltan datos del cliente")
+            
+            # Mongo logic
             cliente_doc = {
                 "nombre": f"{reserva.nombre_cliente.strip()} {reserva.apellido_cliente.strip() if reserva.apellido_cliente else ''}".strip(),
                 "correo": reserva.email_cliente.strip(),
                 "telefono": reserva.telefono_cliente.strip(),
                 "direccion": None,
-                "estado": "nuevo"  # <--- CAMPO NUEVO (Estado por defecto para clientes creados en reserva)
+                "estado": "nuevo"
             }
             existente = clientes_col.find_one({"correo": cliente_doc["correo"]})
             cliente_oid = existente["_id"] if existente else insert_document(clientes_col, cliente_doc)
@@ -364,8 +355,36 @@ def crear_reserva(reserva: ReservaCreate):
             {"$set": {"disponibilidades.$.estado": "pendiente"}}
         )
 
-        return {"mensaje": "Reserva creada correctamente", "id_reserva": str(rid)}
+        # ---------------------------------------------------------
+        # SINCRONIZACIÓN SQL (Nuevo/Actualizar Cliente)
+        # ---------------------------------------------------------
+        if reserva.email_cliente:
+            cliente_sql = db_sql.query(ClienteSQL).filter(ClienteSQL.correo == reserva.email_cliente).first()
+
+            if cliente_sql:
+                # Actualizar datos existentes
+                cliente_sql.nombre = reserva.nombre_cliente
+                cliente_sql.apellido = reserva.apellido_cliente
+                cliente_sql.telefono = reserva.telefono_cliente
+                if reserva.rut_cliente:
+                    cliente_sql.rut = reserva.rut_cliente
+            else:
+                # Crear nuevo cliente
+                nuevo_cliente_sql = ClienteSQL(
+                    nombre=reserva.nombre_cliente,
+                    apellido=reserva.apellido_cliente,
+                    correo=reserva.email_cliente,
+                    telefono=reserva.telefono_cliente,
+                    rut=reserva.rut_cliente,
+                    estado="nuevo"
+                )
+                db_sql.add(nuevo_cliente_sql)
+            
+            db_sql.commit()
+
+        return {"mensaje": "Reserva creada y cliente sincronizado en SQL", "id_reserva": str(rid)}
     except Exception as e:
+        print(f"Error creando reserva: {e}")
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
 @app.put("/reservas/actualizar/{reserva_id}")

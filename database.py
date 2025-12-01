@@ -38,14 +38,13 @@ else:
 # ==========================================
 
 # Railway proporciona estas variables por defecto.
-# Usamos "mysql.railway.internal" como host por defecto (Red Privada)
 DB_USER = os.environ.get("MYSQLUSER", "root")
 DB_PASS = os.environ.get("MYSQLPASSWORD", "")
 DB_HOST = os.environ.get("MYSQLHOST", "mysql.railway.internal")
 DB_NAME = os.environ.get("MYSQLDATABASE", "railway")
 DB_PORT = os.environ.get("MYSQLPORT", "3306")
 
-# Construcción manual de la URL (Tal como solicitaste)
+# Construcción manual de la URL
 SQLALCHEMY_DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 try:
@@ -67,6 +66,18 @@ class UsuarioSQL(Base):
     contrasena = Column(String(100))                       # Password
     rol = Column(String(20))                               # 'jefe' o 'barbero'
     mongo_id = Column(String(50))                          # ID vinculado de Mongo
+
+# --- NUEVO: Modelo de Tabla Clientes (SQL) ---
+class ClienteSQL(Base):
+    __tablename__ = "clientes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String(100))
+    apellido = Column(String(100), nullable=True)
+    correo = Column(String(100), unique=True, index=True)
+    telefono = Column(String(50))
+    rut = Column(String(20), nullable=True)
+    estado = Column(String(20), default="nuevo")
 
 # Crear tablas automáticamente al iniciar
 try:
