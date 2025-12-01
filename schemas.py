@@ -1,4 +1,3 @@
-#schemas.py
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import date
@@ -8,6 +7,7 @@ class ClienteSchema(BaseModel):
     correo: EmailStr
     telefono: str
     direccion: Optional[str] = None
+    estado: Optional[str] = "nuevo" 
 
 class DisponibilidadSchema(BaseModel):
     fecha: date

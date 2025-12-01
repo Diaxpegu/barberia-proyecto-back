@@ -7,6 +7,7 @@ class Cliente(BaseModel):
     correo: EmailStr
     telefono: str
     direccion: Optional[str] = None
+    estado: Optional[str] = "nuevo" 
 
 class Barbero(BaseModel):
     nombre: str
