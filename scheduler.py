@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
+# Importamos SessionLocal y ClienteSQL para acceder a MySQL
 from database import reservas_col, SessionLocal, ClienteSQL
 from email_utils import enviar_correo_recordatorio
 
@@ -13,21 +14,25 @@ def chequear_reservas_proximas():
         "notificacion_enviada": {"$ne": True}
     })
 
-    db_sql = SessionLocal()
+    db_sql = SessionLocal() # Abrir sesión SQL
     try:
-        for reserva in reservas:
+        for reserva in reservas: 
             email = None
             nombre = "Cliente"
-            
+
+
+            # 1. Buscar en MySQL
             if "id_cliente_mysql" in reserva and reserva["id_cliente_mysql"]:
                 c = db_sql.query(ClienteSQL).filter(ClienteSQL.id == reserva["id_cliente_mysql"]).first()
                 if c:
                     email = c.correo
                     nombre = c.nombre
             
+            # 2. Fallback Snapshot
             if not email and "datos_cliente_snapshot" in reserva:
-                email = reserva["datos_cliente_snapshot"].get("correo")
-                nombre = reserva["datos_cliente_snapshot"].get("nombre")
+                snap = reserva["datos_cliente_snapshot"]
+                email = snap.get("correo")
+                nombre = snap.get("nombre")
 
             if email:
                 enviado = enviar_correo_recordatorio(email, nombre, reserva["fecha"], reserva["hora"], reserva.get("servicio_nombre"))
