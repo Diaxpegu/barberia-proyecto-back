@@ -4,7 +4,7 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 import os
 
 # ==========================================
-# 1. CONFIGURACIÓN MONGODB (Todo el negocio excepto Clientes)
+# 1. CONFIGURACIÓN MONGODB (Negocio + Login)
 # ==========================================
 MONGO_URL = os.getenv(
     "MONGO_URL",
@@ -28,15 +28,14 @@ if db is not None:
     reservas_col = db["reservas"]
     disponibilidades_col = db["disponibilidades"]
     notificaciones_col = db["notificaciones"]
-    jefes_col = db["jefes"]  # IMPORTANTE: Aquí están los admins
-    
-    # Clientes NO está en Mongo, lo ponemos en None para seguridad
+    jefes_col = db["jefes"] 
+    # Clientes está en MySQL, no aquí
     clientes_col = None 
 else:
     barberos_col = servicios_col = productos_col = reservas_col = jefes_col = clientes_col = None
 
 # ==========================================
-# 2. CONFIGURACIÓN MYSQL (Solo Tabla Clientes)
+# 2. CONFIGURACIÓN MYSQL (Solo Clientes)
 # ==========================================
 DB_USER = os.environ.get("MYSQLUSER", "root")
 DB_PASS = os.environ.get("MYSQLPASSWORD", "")
@@ -47,6 +46,7 @@ DB_PORT = os.environ.get("MYSQLPORT", "3306")
 SQLALCHEMY_DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 try:
+    # pool_pre_ping ayuda a mantener la conexión estable
     engine = create_engine(SQLALCHEMY_DATABASE_URL, pool_pre_ping=True)
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     Base = declarative_base()
@@ -61,12 +61,12 @@ class ClienteSQL(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     nombre = Column(String(100))
-    apellido = Column(String(100), nullable=True) # Agregado para separar nombre/apellido
+    apellido = Column(String(100), nullable=True)
     correo = Column(String(100), unique=True, index=True)
     telefono = Column(String(20))
     rut = Column(String(20), nullable=True)
     direccion = Column(String(200), nullable=True)
-    estado = Column(String(50), default="nuevo") # Para la lógica de negocio
+    estado = Column(String(50), default="nuevo")
 
 # Crear tablas
 try:
@@ -80,4 +80,3 @@ def get_db_sql():
         yield db_sql
     finally:
         db_sql.close()
-        
