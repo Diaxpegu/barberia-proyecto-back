@@ -4,7 +4,7 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 import os
 
 # ==========================================
-# 1. CONFIGURACIÓN MONGODB (Negocio + Login)
+# 1. CONFIGURACIÓN MONGODB (NoSQL)
 # ==========================================
 MONGO_URL = os.getenv(
     "MONGO_URL",
@@ -22,19 +22,22 @@ except Exception as e:
 
 # Colecciones MongoDB
 if db is not None:
-    # CLIENTES YA NO ESTÁ AQUÍ (Ahora es MySQL)
     barberos_col = db["barberos"]
     servicios_col = db["servicios"]
     productos_col = db["productos"]
     reservas_col = db["reservas"]
     disponibilidades_col = db["disponibilidades"]
-    jefes_col = db["jefes"] # Para login de admin
-    # clientes_col se mantiene como variable None o se usa para migración si quisieras
+    notificaciones_col = db["notificaciones"]
+    jefes_col = db["jefes"]
+    
+    # DEFINICIÓN DE SEGURIDAD:
+    # Definimos esto como None para que si algún archivo antiguo lo importa, no explote el sistema.
+    clientes_col = None 
 else:
-    barberos_col = servicios_col = productos_col = reservas_col = jefes_col = None
+    barberos_col = servicios_col = productos_col = reservas_col = jefes_col = clientes_col = None
 
 # ==========================================
-# 2. CONFIGURACIÓN MYSQL (Solo Clientes)
+# 2. CONFIGURACIÓN MYSQL (SQL)
 # ==========================================
 DB_USER = os.environ.get("MYSQLUSER", "root")
 DB_PASS = os.environ.get("MYSQLPASSWORD", "")
@@ -48,9 +51,9 @@ try:
     engine = create_engine(SQLALCHEMY_DATABASE_URL, pool_pre_ping=True)
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     Base = declarative_base()
-    print(f" SQL configurado hacia: {DB_HOST}:{DB_PORT}")
+    print(f"Motor SQL (Clientes) configurado hacia: {DB_HOST}:{DB_PORT}")
 except Exception as e:
-    print("Error al configurar SQL:", e)
+    print("Error al configurar motor SQL:", e)
     Base = declarative_base()
 
 # --- Modelo SOLO para Clientes ---
@@ -62,7 +65,7 @@ class ClienteSQL(Base):
     correo = Column(String(100), unique=True, index=True)
     telefono = Column(String(20))
     direccion = Column(String(200), nullable=True)
-    estado = Column(String(50), default="nuevo") # Para cumplir requisito de actualizar estado
+    estado = Column(String(50), default="nuevo")
 
 # Crear tablas
 try:
