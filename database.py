@@ -4,7 +4,7 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 import os
 
 # ==========================================
-# 1. CONFIGURACIÓN MONGODB (NoSQL)
+# 1. CONFIGURACIÓN MONGODB (Todo el negocio excepto Clientes)
 # ==========================================
 MONGO_URL = os.getenv(
     "MONGO_URL",
@@ -28,16 +28,15 @@ if db is not None:
     reservas_col = db["reservas"]
     disponibilidades_col = db["disponibilidades"]
     notificaciones_col = db["notificaciones"]
-    jefes_col = db["jefes"]
+    jefes_col = db["jefes"]  # IMPORTANTE: Aquí están los admins
     
-    # DEFINICIÓN DE SEGURIDAD:
-    # Definimos esto como None para que si algún archivo antiguo lo importa, no explote el sistema.
+    # Clientes NO está en Mongo, lo ponemos en None para seguridad
     clientes_col = None 
 else:
     barberos_col = servicios_col = productos_col = reservas_col = jefes_col = clientes_col = None
 
 # ==========================================
-# 2. CONFIGURACIÓN MYSQL (SQL)
+# 2. CONFIGURACIÓN MYSQL (Solo Tabla Clientes)
 # ==========================================
 DB_USER = os.environ.get("MYSQLUSER", "root")
 DB_PASS = os.environ.get("MYSQLPASSWORD", "")
@@ -62,16 +61,18 @@ class ClienteSQL(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     nombre = Column(String(100))
+    apellido = Column(String(100), nullable=True) # Agregado para separar nombre/apellido
     correo = Column(String(100), unique=True, index=True)
     telefono = Column(String(20))
+    rut = Column(String(20), nullable=True)
     direccion = Column(String(200), nullable=True)
-    estado = Column(String(50), default="nuevo")
+    estado = Column(String(50), default="nuevo") # Para la lógica de negocio
 
 # Crear tablas
 try:
     Base.metadata.create_all(bind=engine)
 except Exception as e:
-    print("No se pudieron crear tablas SQL:", e)
+    print("Advertencia SQL:", e)
 
 def get_db_sql():
     db_sql = SessionLocal()
